@@ -1,69 +1,81 @@
 # kAuth
 
-KEYDAL Network tarafından geliştirilen, Minecraft sunucuları için modern ve güvenli giriş/kayıt sistemi.
+Modern and secure authentication plugin for Minecraft servers. Developed by **KEYDAL Projects**.
 
-## Özellikler
+Minecraft sunucuları için modern ve güvenli giriş/kayıt sistemi. **KEYDAL Projects** tarafından geliştirilmiştir.
 
-- **Dialog GUI** - Paper 1.21.5+ istemcilerde görsel giriş ekranı
-- **Chat Fallback** - Eski istemcilerde otomatik chat tabanlı giriş
-- **PBKDF2-SHA256 Şifreleme** - 65536 iterasyonluk endüstri standardı şifreleme
-- **Timing-safe Doğrulama** - Side-channel saldırılarına karşı koruma
-- **IP Brute-force Koruması** - IP başına deneme limiti ve otomatik engelleme
-- **Hesap Limiti** - IP başına maksimum hesap sayısı sınırlaması
-- **Zayıf Şifre Engelleme** - Yaygın şifreleri ve oyuncu adını şifre olarak engeller
-- **Oturum Yönetimi** - IP bazlı oturum önbelleği ile tekrar giriş gerektirmez
-- **Kural Onay Sistemi** - İlk kayıtta sunucu kuralları gösterilir
-- **Son Giriş Bilgisi** - Giriş yapıldığında son giriş IP ve zamanı gösterilir
-- **Detaylı Loglama** - Tüm giriş, kayıt, başarısız deneme ve çıkış işlemleri loglanır
-- **ViaVersion Desteği** - ViaVersion + ViaBackwards ile tüm istemci sürümleri desteklenir
-- **Efekt Sistemi** - Title, subtitle, actionbar, ses ve parçacık efektleri
+---
 
-## Gereksinimler
+## Features / Özellikler
 
-- Paper 1.20+ (Dialog GUI için 1.21.5+ sunucu önerilir)
+### Authentication / Kimlik Doğrulama
+- **Dialog GUI** - Visual login screen on Paper 1.21.5+ clients
+- **Chat Fallback** - Automatic chat-based login for older clients
+- **PBKDF2-SHA256 Encryption** - Industry standard with 65,536 iterations
+- **Timing-safe Verification** - Protection against side-channel attacks
+
+### Security / Güvenlik
+- **IP Brute-force Protection** - Per-IP attempt limits with automatic blocking
+- **Account Limit** - Maximum accounts per IP address
+- **Weak Password Blocking** - Blocks common passwords and username-as-password
+- **Session Management** - IP-based session cache for seamless reconnection
+- **Detailed Logging** - All login, register, failed attempts and logout events
+
+### User Experience / Kullanıcı Deneyimi
+- **Rule Agreement System** - Server rules shown on first registration
+- **Last Login Info** - Shows last login IP and time on login
+- **Effect System** - Title, subtitle, actionbar, sound and particle effects
+- **ViaVersion Support** - All client versions supported via ViaVersion/ViaBackwards
+
+## Requirements / Gereksinimler
+
+- Paper 1.20+ (1.21.5+ recommended for Dialog GUI)
 - Java 21+
-- ViaVersion + ViaBackwards (opsiyonel, eski istemci desteği için)
+- ViaVersion + ViaBackwards (optional, for older client support)
 
-## Kurulum
+## Installation / Kurulum
 
-1. `kAuth.jar` dosyasını `plugins/` klasörüne atın
-2. Sunucuyu başlatın
-3. `plugins/kAuth/config.yml` dosyasından ayarları düzenleyin
-4. `/kauth reload` komutu ile yeniden yükleyin
+1. Drop `kAuth.jar` into your `plugins/` folder
+2. Start the server
+3. Edit `plugins/kAuth/config.yml`
+4. Run `/kauth reload`
 
-## Komutlar
+## Commands / Komutlar
 
-| Komut | Açıklama | Yetki |
+| Command | Description | Permission |
 |---|---|---|
-| `/giris <şifre>` | Hesaba giriş yap | `kauth.use` |
-| `/kayit <şifre> <tekrar>` | Yeni hesap oluştur | `kauth.use` |
-| `/cikis` | Hesaptan çıkış yap | `kauth.use` |
-| `/sifredegistir <eski> <yeni> <tekrar>` | Şifre değiştir | `kauth.use` |
-| `/kauth reload` | Config yeniden yükle | `kauth.admin` |
-| `/kauth kayitsil <oyuncu>` | Hesap sil | `kauth.admin` |
-| `/kauth sifredegistir <oyuncu> <yeni>` | Şifre değiştir (admin) | `kauth.admin` |
+| `/giris <password>` | Login to your account | `kauth.use` |
+| `/kayit <password> <confirm>` | Create a new account | `kauth.use` |
+| `/cikis` | Logout | `kauth.use` |
+| `/sifredegistir <old> <new> <confirm>` | Change password | `kauth.use` |
+| `/kauth reload` | Reload configuration | `kauth.admin` |
+| `/kauth kayitsil <player>` | Delete an account | `kauth.admin` |
+| `/kauth sifredegistir <player> <new>` | Change password (admin) | `kauth.admin` |
 
-## Sürüm Uyumluluğu
+## Version Compatibility / Sürüm Uyumluluğu
 
-| İstemci Sürümü | Giriş Modu |
+| Client Version | Login Mode |
 |---|---|
 | 1.21.5+ | Dialog GUI |
-| 1.21.0 - 1.21.4 | Chat tabanlı |
-| 1.20.x | Chat tabanlı |
+| 1.21.0 - 1.21.4 | Chat-based |
+| 1.20.x | Chat-based |
 
-> Eski istemcilerin bağlanabilmesi için ViaVersion + ViaBackwards gereklidir.
+> ViaVersion + ViaBackwards required for older clients to connect.
 
-## Güvenlik
+## Security Details / Güvenlik Detayları
 
-- **PBKDF2WithHmacSHA256** - 65536 iterasyon, 256-bit anahtar, 32-byte rastgele salt
-- **Timing-safe karşılaştırma** - Hash doğrulamasında sabit zamanlı karşılaştırma
-- **IP brute-force koruması** - Yapılandırılabilir deneme limiti ve engelleme süresi
-- **IP bazlı hesap limiti** - Aynı IP'den açılabilecek hesap sayısı sınırlanabilir
-- **Zayıf şifre kontrolü** - 123456, qwerty, oyuncu adı gibi zayıf şifreler engellenir
-- **Thread-safe** - ConcurrentHashMap ile eşzamanlı erişim güvenliği
-- **Geriye uyumluluk** - Eski SHA-256 hash formatı otomatik tanınır
+| Feature | Detail |
+|---|---|
+| Hashing | PBKDF2WithHmacSHA256, 65,536 iterations, 256-bit key |
+| Salt | 32-byte cryptographically secure random |
+| Comparison | Constant-time (timing-safe) |
+| Brute-force | Per-IP attempt limit with configurable block duration |
+| Account limit | Configurable max accounts per IP |
+| Weak passwords | Blocks 123456, qwerty, username, single-char repeats |
+| Thread safety | ConcurrentHashMap for all shared state |
+| Backward compat | Legacy SHA-256 hashes auto-detected |
 
-## Derleme
+## Build / Derleme
 
 ```bash
 javac -cp paper-api.jar -d build --release 21 -encoding UTF-8 $(find src -name "*.java")
@@ -71,21 +83,25 @@ cp src/main/resources/*.yml build/
 cd build && jar cf kAuth.jar .
 ```
 
-## Yapılandırma
+## Configuration / Yapılandırma
 
-Tüm ayarlar `config.yml` dosyasından düzenlenebilir:
+All settings are configurable via `config.yml`:
 
-- Giriş/kayıt mesajları ve efektleri
-- Şifre gereksinimleri (min/max uzunluk)
-- Oturum süresi ve IP kontrolü
-- Brute-force koruması ayarları
-- Sunucu kuralları metni
-- Loglama formatları
+- Login/register messages and effects
+- Password requirements (min/max length)
+- Session timeout and IP verification
+- Brute-force protection settings
+- Server rules text
+- Logging formats
+- Visual effects (title, sound, particles)
 
-## Lisans
+## License / Lisans
 
-MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
+MIT License - See [LICENSE](LICENSE) for details.
 
-## Geliştirici
+## Developer / Geliştirici
 
-**Egemen KEYDAL** - [KEYDAL Network](https://github.com/KEYDAL-Network)
+**Egemen KEYDAL** - KEYDAL Projects
+
+- [keydal.net](https://keydal.net)
+- [keydal.tr](https://keydal.tr)
