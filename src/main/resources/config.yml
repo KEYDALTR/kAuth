@@ -1,0 +1,282 @@
+##########################################################################
+#
+#   kAuth - Giriş & Kayıt Dialog Sistemi
+#   KEYDAL Network
+#   Geliştirici: Egemen KEYDAL
+#
+##########################################################################
+
+# ==================== LOGLAMA ====================
+logging:
+  # Giriş/kayıt/çıkış olaylarını konsola logla
+  enabled: true
+  # Log formatı
+  login: "[kAuth] %player% başarıyla giriş yaptı. (IP: %ip%)"
+  register: "[kAuth] %player% yeni hesap oluşturdu. (IP: %ip%)"
+  logout: "[kAuth] %player% çıkış yaptı."
+  failed-login: "[kAuth] %player% yanlış şifre girdi. (Deneme: %attempts%) (IP: %ip%)"
+  kick-timeout: "[kAuth] %player% süre dolduğu için atıldı."
+  kick-attempts: "[kAuth] %player% çok fazla yanlış deneme yaptığı için atıldı."
+  rule-accepted: "[kAuth] %player% sunucu kurallarını kabul etti. (IP: %ip%, Tarih: %date%)"
+  rule-declined: "[kAuth] %player% sunucu kurallarını reddetti. (IP: %ip%, Tarih: %date%)"
+  password-changed: "[kAuth] %player% şifresini değiştirdi. (IP: %ip%)"
+
+# ==================== GİRİŞ AYARLARI ====================
+auth:
+  min-password-length: 4
+  max-password-length: 30
+  # Giriş yapma süresi (saniye) - süre dolunca oyuncu atılır (0 = devre dışı)
+  login-timeout: 60
+  # Maksimum yanlış şifre denemesi (0 = sınırsız)
+  max-login-attempts: 5
+  # Oturum sistemi - aynı IP ile tekrar girişte şifre sorma (dakika, 0 = devre dışı)
+  session-timeout: 30
+  # Giriş yapmadan önce oyuncuya körlük efekti ver
+  blind-effect: true
+  # Giriş yapmadan önce oyuncuyu dondur (hareket engelle)
+  freeze-player: true
+  # Giriş yapmadan önce sohbeti engelle
+  block-chat: true
+  # Giriş yapmadan önce komutları engelle
+  block-commands: true
+  # İzin verilen komutlar (giriş yapmadan kullanılabilir)
+  allowed-commands:
+    - "/kauth"
+    - "/ka"
+    - "/giris"
+    - "/kayit"
+    - "/cikis"
+    - "/login"
+    - "/register"
+    - "/logout"
+    - "/l"
+    - "/reg"
+  # Zayıf şifreleri engelle (123456, qwerty, oyuncu adı vs.)
+  block-weak-passwords: true
+  # IP bazlı brute-force koruması - bu kadar denemeden sonra IP engellenir
+  max-ip-attempts: 20
+  # IP engellenme süresi (dakika)
+  ip-block-minutes: 10
+  # Aynı IP'den maksimum hesap sayısı (0 = sınırsız)
+  max-accounts-per-ip: 3
+  # Son giriş bilgisini göster (IP ve zaman)
+  show-last-login: true
+  # Timeout kick mesajı
+  timeout-kick-message: "<color:#FF6B6B>Giriş süresi doldu! Tekrar bağlanınız.</color>"
+  # Max deneme kick mesajı
+  max-attempts-kick-message: "<color:#FF6B6B>Çok fazla yanlış deneme! Tekrar bağlanınız.</color>"
+
+# ==================== DİALOG AYARLARI ====================
+dialog:
+  canCloseWithEscape: false
+  columns: 2
+
+# ==================== GİRİŞ DİALOGU ====================
+login:
+  title: "<color:#00D4FF>KEYDAL</color> <color:#3A4F6A>│</color> <color:#4AEAFF>Giriş Yap</color>"
+  body:
+    - ""
+    - "<gradient:#00D4FF:#4AEAFF:#2E5CFF>KEYDAL NETWORK</gradient>"
+    - ""
+    - "<color:#B0C4D4>Hoş geldiniz! Hesabınıza giriş yapınız.</color>"
+    - ""
+  width: 200
+  actions:
+    - type: submit
+      label: "<color:#4AEAFF>Giriş Yap</color>"
+  # İptal butonu
+  cancel-label: "<color:#FF6B6B>İptal</color>"
+
+# ==================== KAYIT DİALOGU ====================
+register:
+  title: "<color:#00D4FF>KEYDAL</color> <color:#3A4F6A>│</color> <color:#C8E0FF>Kayıt Ol</color>"
+  body:
+    - ""
+    - "<gradient:#00D4FF:#4AEAFF:#2E5CFF>KEYDAL NETWORK</gradient>"
+    - ""
+    - "<color:#B0C4D4>Yeni bir hesap oluşturunuz.</color>"
+    - ""
+  width: 200
+  email_input:
+    enabled: false
+    label: "E-Posta"
+  actions:
+    - type: submit
+      label: "<color:#C8E0FF>Kayıt Ol</color>"
+  cancel-label: "<color:#FF6B6B>İptal</color>"
+
+# ==================== KURAL DİALOGU ====================
+rule:
+  enabled: true
+  title: "<color:#00D4FF>KEYDAL</color> <color:#3A4F6A>│</color> <color:#8FA8B8>Sunucu Kuralları</color>"
+  body:
+    - ""
+    - "<gradient:#00D4FF:#4AEAFF:#2E5CFF>KEYDAL NETWORK</gradient>"
+    - ""
+    - "<color:#4AEAFF>1.</color> <color:#B0C4D4>Hile, hack ve haksız avantaj kullanımı yasaktır.</color>"
+    - "<color:#4AEAFF>2.</color> <color:#B0C4D4>Reklam yapmak ve spam atmak yasaktır.</color>"
+    - "<color:#4AEAFF>3.</color> <color:#B0C4D4>Diğer oyunculara hakaret ve küfür yasaktır.</color>"
+    - "<color:#4AEAFF>4.</color> <color:#B0C4D4>Bug/açık kullanımı yasaktır, bildirin.</color>"
+    - "<color:#4AEAFF>5.</color> <color:#B0C4D4>Yetkililerin kararlarına saygı gösterin.</color>"
+    - ""
+    - "<color:#B0C4D4>Kuralları kabul etmek için</color> <color:#4AEAFF>Onayla</color> <color:#B0C4D4>butonuna basın.</color>"
+  confirmButton: "<color:#4AEAFF>Onayla</color>"
+  # Kabul etmeme kick mesajı
+  decline-kick-message: "<color:#FF6B6B>Kuralları kabul etmediniz.</color>"
+  agree:
+    enabled: true
+    key: "agree"
+    label: "<color:#B0C4D4>Kuralları okudum ve kabul ediyorum</color>"
+
+# ==================== GÖRSEL EFEKTLER ====================
+effects:
+  # === Giriş yapmadan önce (bekleme ekranı) ===
+  waiting:
+    # Actionbar mesajı (sürekli gösterilir)
+    actionbar:
+      enabled: true
+      message: "<color:#FF6B6B>⚠</color> <color:#B0C4D4>Lütfen giriş yapınız veya kayıt olunuz!</color> <color:#FF6B6B>⚠</color>"
+      update-ticks: 20
+    # Title (girişte bir kere gösterilir)
+    title:
+      enabled: true
+      title: "<gradient:#00D4FF:#4AEAFF:#2E5CFF>KEYDAL</gradient>"
+      subtitle: "<color:#B0C4D4>Giriş yapmak için dialogu kullanınız</color>"
+      fade-in: 10
+      stay: 60
+      fade-out: 20
+
+  # === Başarılı giriş sonrası ===
+  login-success:
+    title:
+      enabled: true
+      title: "<color:#4AEAFF>Hoş Geldiniz!</color>"
+      subtitle: "<color:#B0C4D4>%player_name%, KEYDAL Network'e giriş yaptınız</color>"
+      fade-in: 5
+      stay: 40
+      fade-out: 10
+    sound:
+      enabled: true
+      type: "ENTITY_PLAYER_LEVELUP"
+      volume: 0.7
+      pitch: 1.5
+    actionbar:
+      enabled: true
+      message: "<color:#4AEAFF>✔ Başarıyla giriş yapıldı!</color>"
+
+  # === Başarılı kayıt sonrası ===
+  register-success:
+    title:
+      enabled: true
+      title: "<color:#C8E0FF>Kayıt Başarılı!</color>"
+      subtitle: "<color:#B0C4D4>%player_name%, hesabınız oluşturuldu</color>"
+      fade-in: 5
+      stay: 40
+      fade-out: 10
+    sound:
+      enabled: true
+      type: "ENTITY_PLAYER_LEVELUP"
+      volume: 0.8
+      pitch: 1.2
+    actionbar:
+      enabled: true
+      message: "<color:#C8E0FF>✔ Hesabınız başarıyla oluşturuldu!</color>"
+
+  # === Yanlış şifre girişi ===
+  login-fail:
+    title:
+      enabled: true
+      title: "<color:#FF6B6B>Yanlış Şifre!</color>"
+      subtitle: "<color:#B0C4D4>Tekrar deneyiniz</color>"
+      fade-in: 5
+      stay: 20
+      fade-out: 10
+    sound:
+      enabled: true
+      type: "ENTITY_VILLAGER_NO"
+      volume: 0.8
+      pitch: 1.0
+
+  # === Çıkış yaptığında ===
+  logout:
+    title:
+      enabled: true
+      title: "<color:#8FA8B8>Çıkış Yapıldı</color>"
+      subtitle: "<color:#B0C4D4>Tekrar giriş yapmanız gerekmektedir</color>"
+      fade-in: 5
+      stay: 30
+      fade-out: 10
+    sound:
+      enabled: true
+      type: "BLOCK_NOTE_BLOCK_BASS"
+      volume: 0.8
+      pitch: 0.5
+
+# ==================== MESAJLAR ====================
+messages:
+  login:
+    button_password: "Şifre"
+    empty_password: "<color:#FF6B6B>Lütfen şifrenizi giriniz!</color>"
+    wrong_password: "<color:#FF6B6B>Yanlış şifre! Tekrar deneyiniz.</color>"
+    need_register: "<color:#8FA8B8>Hesap bulunamadı. Lütfen kayıt olunuz.</color>"
+    cancelled: "<color:#FF6B6B>Giriş işlemi iptal edildi.</color>"
+    success: "<color:#4AEAFF>Başarıyla giriş yaptınız!</color>"
+    attempts-left: "<color:#8FA8B8>Kalan deneme hakkı: %attempts%</color>"
+
+  register:
+    button_password: "Şifre"
+    confirm_password: "Şifre Tekrar"
+    need_both: "<color:#FF6B6B>Lütfen şifre ve onay alanlarını doldurunuz!</color>"
+    mismatch: "<color:#FF6B6B>Şifreler uyuşmuyor! Tekrar deneyiniz.</color>"
+    too_short: "<color:#FF6B6B>Şifre en az %min% karakter olmalıdır!</color>"
+    too_long: "<color:#FF6B6B>Şifre en fazla %max% karakter olmalıdır!</color>"
+    invalid: "<color:#FF6B6B>Geçersiz şifre!</color>"
+    already: "<color:#8FA8B8>Zaten kayıtlısınız. Lütfen giriş yapınız.</color>"
+    failed: "<color:#FF6B6B>Kayıt başarısız oldu. Tekrar deneyiniz.</color>"
+    email_required: "<color:#FF6B6B>Lütfen e-posta adresinizi giriniz!</color>"
+    email_invalid: "<color:#FF6B6B>Geçersiz e-posta adresi!</color>"
+    email_already_used: "<color:#FF6B6B>Bu e-posta zaten kullanılmaktadır!</color>"
+    cancelled: "<color:#FF6B6B>Kayıt işlemi iptal edildi.</color>"
+    success: "<color:#4AEAFF>Başarıyla kayıt oldunuz!</color>"
+
+  logout:
+    success: "<color:#4AEAFF>Başarıyla çıkış yaptınız.</color>"
+    not-logged-in: "<color:#FF6B6B>Zaten giriş yapmamışsınız!</color>"
+
+  changepassword-self:
+    success: "<color:#4AEAFF>Şifreniz başarıyla değiştirildi!</color>"
+    wrong-old: "<color:#FF6B6B>Eski şifreniz yanlış!</color>"
+    usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /changepassword <eski şifre> <yeni şifre></gradient>"
+    not-registered: "<color:#FF6B6B>Kayıtlı değilsiniz!</color>"
+
+  chat-login:
+    success: "<color:#4AEAFF>Başarıyla giriş yaptınız!</color>"
+    usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /login <şifre></gradient>"
+    already: "<color:#8FA8B8>Zaten giriş yapmışsınız!</color>"
+
+  chat-register:
+    success: "<color:#4AEAFF>Başarıyla kayıt oldunuz!</color>"
+    usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /register <şifre> <şifre tekrar></gradient>"
+    already: "<color:#8FA8B8>Zaten kayıtlısınız!</color>"
+
+  session:
+    resumed: "<color:#4AEAFF>Oturumunuz devam ediyor, otomatik giriş yapıldı.</color>"
+
+  # Admin komut mesajları
+  admin:
+    reload: "<color:#4AEAFF>kAuth yapılandırması yeniden yüklendi.</color>"
+    no-permission: "<color:#FF6B6B>Bu komutu kullanma yetkiniz yok.</color>"
+    player-only: "<color:#FF6B6B>Bu komut sadece oyuncular tarafından kullanılabilir.</color>"
+    usage: "<color:#8FA8B8>kAuth Komutları:</color>"
+    usage-reload: "<gray>/kauth reload</gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Yapılandırmayı yeniden yükle</color>"
+    usage-open: "<gray>/kauth ac <giris|kayit></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Dialog aç</color>"
+    usage-unregister: "<gray>/kauth kayitsil <oyuncu></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Oyuncu kaydını sil</color>"
+    usage-changepassword: "<gray>/kauth sifredegistir <oyuncu> <yenişifre></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Şifre değiştir</color>"
+    usage-logout: "<gray>/cikis</gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Çıkış yap</color>"
+    usage-login: "<gray>/giris <şifre></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Giriş yap</color>"
+    usage-register: "<gray>/kayit <şifre> <şifre tekrar></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Kayıt ol</color>"
+    usage-changepassword-self: "<gray>/sifredegistir <eski> <yeni></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Şifre değiştir</color>"
+    unregister-success: "<color:#4AEAFF>%player% oyuncusunun kaydı silindi.</color>"
+    unregister-fail: "<color:#FF6B6B>%player% oyuncusu bulunamadı.</color>"
+    changepassword-success: "<color:#4AEAFF>%player% oyuncusunun şifresi değiştirildi.</color>"
+    changepassword-fail: "<color:#FF6B6B>%player% oyuncusu bulunamadı.</color>"
