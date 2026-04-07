@@ -49,7 +49,7 @@ public final class KAuth extends JavaPlugin {
         if (sifreCmd != null) sifreCmd.setExecutor(new ChangePasswordCommand(this, authService, configManager));
 
         getLogger().info("============================kAuth============================");
-        getLogger().info("KEYDAL Network - Giriş Sistemi v2.0.0");
+        getLogger().info("KEYDAL Network - Giriş Sistemi v1.0.0");
         getLogger().info("Mod: " + (dialogProvider.isDialogAvailable() ? "Dialog GUI" : "Chat Tabanlı"));
         getLogger().info("Şifreleme: PBKDF2-SHA256 (65536 iterasyon)");
         getLogger().info("kAuth aktif!");

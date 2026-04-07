@@ -6,6 +6,19 @@ Minecraft sunucuları için modern ve güvenli giriş/kayıt sistemi. **KEYDAL P
 
 ---
 
+## Screenshots / Ekran Görüntüleri
+
+### Rule Agreement / Kural Onayı
+![Rules](screenshots/rules.png)
+
+### Register / Kayıt
+![Register](screenshots/register.png)
+
+### Login / Giriş
+![Login](screenshots/login.png)
+
+---
+
 ## Features / Özellikler
 
 ### Authentication / Kimlik Doğrulama
