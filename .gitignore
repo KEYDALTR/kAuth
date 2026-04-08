@@ -16,7 +16,7 @@ kauth-velocity/build/
 Thumbs.db
 
 # Eski kaynak dizin (artık alt modüllerde)
-src/
+/src/
 
 # Claude
 .claude/

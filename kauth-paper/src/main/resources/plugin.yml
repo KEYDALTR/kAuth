@@ -1,0 +1,49 @@
+name: kAuth
+version: '${version}'
+main: com.kauth.KAuth
+api-version: '1.20'
+author: Egemen KEYDAL
+description: KEYDAL Network - Giriş & Kayıt Sistemi
+
+commands:
+  kauth:
+    description: kAuth yönetim komutları
+    usage: /<command> reload | ac | cikis | kayitsil | sifredegistir
+    aliases: [ka]
+    permission: kauth.use
+  giris:
+    description: Giriş yap
+    usage: /<command> <şifre>
+    aliases: [login, l]
+    permission: kauth.use
+  kayit:
+    description: Kayıt ol
+    usage: /<command> <şifre> <şifre tekrar> [email]
+    aliases: [register, reg]
+    permission: kauth.use
+  cikis:
+    description: Çıkış yap
+    usage: /<command>
+    aliases: [logout]
+    permission: kauth.use
+  sifredegistir:
+    description: Şifre değiştir
+    usage: /<command> <eski şifre> <yeni şifre>
+    aliases: [changepassword, cp]
+    permission: kauth.use
+  sifresifirla:
+    description: Şifre sıfırla (e-posta ile)
+    usage: /<command> <kullanıcı> | /<command> onayla <kod> <yenişifre>
+    aliases: [resetpassword, rp]
+    permission: kauth.use
+  dogrula:
+    description: E-posta doğrulama kodu gir
+    usage: /<command> <kod>
+    aliases: [verify]
+    permission: kauth.use
+
+permissions:
+  kauth.use:
+    default: true
+  kauth.admin:
+    default: op
