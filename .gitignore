@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+kauth-common/build/
+kauth-paper/build/
+kauth-velocity/build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Eski kaynak dizin (artık alt modüllerde)
+src/
+
+# Claude
+.claude/
