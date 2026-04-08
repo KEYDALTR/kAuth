@@ -49,6 +49,8 @@ public class VelocityMessageListener {
 
     private void broadcastExcept(RegisteredServer excludeServer, byte[] data) {
         for (RegisteredServer server : plugin.getServer().getAllServers()) {
+            String name = server.getServerInfo().getName().toLowerCase();
+            if (plugin.isIgnoredServer(name)) continue;
             if (!server.equals(excludeServer) && !server.getPlayersConnected().isEmpty()) {
                 server.sendPluginMessage(KAuthVelocity.CHANNEL, data);
             }
@@ -57,6 +59,8 @@ public class VelocityMessageListener {
 
     private void broadcastToAll(byte[] data) {
         for (RegisteredServer server : plugin.getServer().getAllServers()) {
+            String name = server.getServerInfo().getName().toLowerCase();
+            if (plugin.isIgnoredServer(name)) continue;
             if (!server.getPlayersConnected().isEmpty()) {
                 server.sendPluginMessage(KAuthVelocity.CHANNEL, data);
             }

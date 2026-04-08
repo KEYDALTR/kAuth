@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.kauth"
-version = "1.0.1"
+version = "1.0.2"
 
 dependencies {
     implementation(project(":kauth-common"))

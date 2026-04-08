@@ -101,7 +101,7 @@ public final class KAuth extends JavaPlugin {
         if (dogrulaCmd != null) dogrulaCmd.setExecutor(new VerifyCommand(this, authService, configManager, verificationManager, dialogProvider));
 
         getLogger().info("============================kAuth============================");
-        getLogger().info("KEYDAL Network - Giriş Sistemi v1.0.1");
+        getLogger().info("KEYDAL Network - Giriş Sistemi v1.0.2");
         getLogger().info("Mod: " + (dialogProvider.isDialogAvailable() ? "Dialog GUI" : "Chat Tabanlı"));
         getLogger().info("Veritabanı: " + dbType.toUpperCase());
         getLogger().info("E-posta: " + (emailService.isEnabled() ? "Aktif (" + getConfig().getString("email.smtp.host", "") + ")" : "Devre dışı"));

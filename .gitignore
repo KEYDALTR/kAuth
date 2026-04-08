@@ -18,5 +18,13 @@ Thumbs.db
 # Eski kaynak dizin (artık alt modüllerde)
 /src/
 
+# Node / Test
+node_modules/
+test-bot/
+test-server/
+integration-test.js
+package.json
+package-lock.json
+
 # Claude
 .claude/

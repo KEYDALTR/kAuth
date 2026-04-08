@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.kauth"
-version = "1.0.1"
+version = "1.0.2"
 
 dependencies {
     implementation(project(":kauth-common"))
@@ -22,6 +22,15 @@ tasks.shadowJar {
     relocate("org.eclipse.angus", "com.kauth.libs.angus")
     relocate("com.mysql", "com.kauth.libs.mysql")
     relocate("com.zaxxer.hikari", "com.kauth.libs.hikari")
+    // Duplicate META-INF dosyalarını engelle
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude("META-INF/LICENSE.md")
+    exclude("META-INF/NOTICE.md")
+    exclude("META-INF/LICENSE")
+    exclude("META-INF/NOTICE")
+    exclude("META-INF/*.SF")
+    exclude("META-INF/*.DSA")
+    exclude("META-INF/*.RSA")
 }
 
 tasks.build {
