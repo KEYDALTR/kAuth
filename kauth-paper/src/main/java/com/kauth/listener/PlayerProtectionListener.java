@@ -1,7 +1,9 @@
 package com.kauth.listener;
 
 import com.kauth.auth.AuthService;
+import com.kauth.config.ConfigManager;
 import com.kauth.config.Settings;
+import io.papermc.paper.event.player.AsyncChatEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -14,28 +16,23 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.plugin.Plugin;
 
-/**
- * Giriş yapmamış oyuncuyu korumak için event listener.
- *
- * OPTIMIZE NOTLARI:
- * - Hot-path config okumaları Settings cache'inden yapılır
- * - Authenticated check en başta (en yaygın senaryo: zaten giriş yapmış)
- * - ignoreCancelled=true → başka plugin cancel'lamışsa skip
- * - PlayerMoveEvent'te hasChangedBlock() vanilla Paper shortcut'u
- */
 public class PlayerProtectionListener implements Listener {
 
     private final AuthService auth;
-    private final Settings settings;
+    private final ConfigManager config;
 
-    public PlayerProtectionListener(Plugin plugin, AuthService auth, Settings settings) {
+    public PlayerProtectionListener(Plugin plugin, AuthService auth, ConfigManager config) {
         this.auth = auth;
-        this.settings = settings;
+        this.config = config;
+    }
+
+    private Settings.Auth authSettings() {
+        return config.getSettings().get().auth();
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
-    public void onChat(AsyncPlayerChatEvent event) {
-        if (!settings.blockChat) return;
+    public void onChat(AsyncChatEvent event) {
+        if (!authSettings().blockChat()) return;
         if (!auth.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
@@ -43,17 +40,20 @@ public class PlayerProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onCommand(PlayerCommandPreprocessEvent event) {
-        if (!settings.blockCommands) return;
-        if (auth.isAuthenticated(event.getPlayer())) return;
-        if (!settings.isCommandAllowed(event.getMessage())) {
+        Settings.Auth s = authSettings();
+        if (!s.blockCommands()) return;
+        Player player = event.getPlayer();
+        if (auth.isAuthenticated(player)) return;
+        if (!s.isCommandAllowed(event.getMessage())) {
             event.setCancelled(true);
+            player.sendMessage(config.parse(
+                    "<color:#FF6B6B>Giriş yapmadan bu komutu kullanamazsınız!</color>"));
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        if (!settings.freezePlayer) return;
-        // Block-level change kontrolü - yaw/pitch için tetiklenmesin
+        if (!authSettings().freezePlayer()) return;
         if (!event.hasChangedBlock()) return;
         if (!auth.isAuthenticated(event.getPlayer())) {
             event.setTo(event.getFrom());

@@ -8,13 +8,6 @@ import org.bukkit.entity.Player;
 
 import java.util.List;
 
-/**
- * Client sürümüne göre otomatik mod seçimi:
- * - 1.21.5+ client (protocol >= 770) → Dialog GUI
- * - Eski client → Chat mesajları + /giris, /kayit komutları
- *
- * Sunucu 1.21.11'de çalışır, ViaVersion ile eski clientlar bağlanır.
- */
 public class DialogProvider {
 
     private final KAuth plugin;
@@ -22,7 +15,6 @@ public class DialogProvider {
     private final boolean serverHasDialogApi;
     private final MiniMessage mm = MiniMessage.miniMessage();
 
-    // Minecraft 1.21.5 = protocol 770 (Dialog desteği başladığı sürüm)
     private static final int DIALOG_MIN_PROTOCOL = 770;
 
     private LoginDialogFactory loginFactory;
@@ -74,11 +66,14 @@ public class DialogProvider {
         return supportsDialog(player) ? "Dialog GUI" : "Chat";
     }
 
-    // ===== Login =====
-
     public void showLogin(Player player) {
         if (supportsDialog(player)) {
-            try { player.showDialog(loginFactory.build(player)); } catch (Exception ignored) {}
+            try { player.showDialog(loginFactory.build(player)); }
+            catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "[kAuth] showLogin dialog hatası, chat fallback: " + e.getMessage(), e);
+                sendChatLogin(player, null);
+            }
         } else {
             sendChatLogin(player, null);
         }
@@ -86,17 +81,25 @@ public class DialogProvider {
 
     public void showLogin(Player player, net.kyori.adventure.text.Component errorMsg) {
         if (supportsDialog(player)) {
-            try { player.showDialog(loginFactory.build(player, errorMsg)); } catch (Exception ignored) {}
+            try { player.showDialog(loginFactory.build(player, errorMsg)); }
+            catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "[kAuth] showLogin(err) dialog hatası, chat fallback: " + e.getMessage(), e);
+                sendChatLogin(player, errorMsg);
+            }
         } else {
             sendChatLogin(player, errorMsg);
         }
     }
 
-    // ===== Register =====
-
     public void showRegister(Player player) {
         if (supportsDialog(player)) {
-            try { player.showDialog(registerFactory.build(player)); } catch (Exception ignored) {}
+            try { player.showDialog(registerFactory.build(player)); }
+            catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "[kAuth] showRegister dialog hatası, chat fallback: " + e.getMessage(), e);
+                sendChatRegister(player, null);
+            }
         } else {
             sendChatRegister(player, null);
         }
@@ -104,31 +107,38 @@ public class DialogProvider {
 
     public void showRegister(Player player, net.kyori.adventure.text.Component errorMsg) {
         if (supportsDialog(player)) {
-            try { player.showDialog(registerFactory.build(player, errorMsg)); } catch (Exception ignored) {}
+            try { player.showDialog(registerFactory.build(player, errorMsg)); }
+            catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "[kAuth] showRegister(err) dialog hatası, chat fallback: " + e.getMessage(), e);
+                sendChatRegister(player, errorMsg);
+            }
         } else {
             sendChatRegister(player, errorMsg);
         }
     }
 
-    // ===== Rules =====
-
     public void showRules(Player player) {
         if (supportsDialog(player)) {
-            try { player.showDialog(ruleFactory.build(player)); } catch (Exception ignored) {}
+            try { player.showDialog(ruleFactory.build(player)); }
+            catch (Exception e) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "[kAuth] showRules dialog hatası, chat fallback: " + e.getMessage(), e);
+                sendChatRules(player);
+            }
         } else {
             sendChatRules(player);
         }
     }
 
-    // ===== Close =====
-
     public void closeDialog(Player player) {
         if (supportsDialog(player)) {
-            try { player.closeDialog(); } catch (Exception ignored) {}
+            try { player.closeDialog(); }
+            catch (Exception e) {
+                plugin.getLogger().warning("[kAuth] closeDialog hatası: " + e.getMessage());
+            }
         }
     }
-
-    // ===== Chat Fallback =====
 
     private void sendChatLogin(Player player, net.kyori.adventure.text.Component error) {
         player.sendMessage(mm.deserialize(""));

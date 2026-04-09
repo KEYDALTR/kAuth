@@ -1,15 +1,16 @@
 package com.kauth.messaging;
 
+import com.kauth.KAuth;
 import com.kauth.common.messaging.AuthMessage;
 import com.kauth.common.messaging.MessageConstants;
+import com.kauth.config.Settings;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.Plugin;
 
 public class MessagingHelper {
 
-    private final Plugin plugin;
+    private final KAuth plugin;
 
-    public MessagingHelper(Plugin plugin) {
+    public MessagingHelper(KAuth plugin) {
         this.plugin = plugin;
     }
 
@@ -26,9 +27,10 @@ public class MessagingHelper {
     }
 
     private void send(Player player, AuthMessage msg) {
-        if (!plugin.getConfig().getBoolean("velocity.enabled", false)) return;
+        Settings.Velocity v = plugin.getConfigManager().getSettings().get().velocity();
+        if (!v.enabled() || !v.hasSecret()) return;
         try {
-            player.sendPluginMessage(plugin, MessageConstants.CHANNEL, msg.toBytes());
+            player.sendPluginMessage(plugin, MessageConstants.CHANNEL, msg.toBytes(v.secret()));
         } catch (Exception e) {
             plugin.getLogger().warning("[Messaging] Mesaj gönderilemedi: " + e.getMessage());
         }

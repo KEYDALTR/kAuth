@@ -1,95 +1,260 @@
-##########################################################################
+##############################################################################
 #
-#   kAuth v1.0.3 - Giriş & Kayıt Dialog Sistemi
-#   KEYDAL Network
-#   Geliştirici: Egemen KEYDAL
+#   kAuth v1.0.4 - Giriş & Kayıt Sistemi
+#   KEYDAL Network - Geliştirici: Egemen KEYDAL
 #
-##########################################################################
+#   GitHub : https://github.com/KEYDALTR/kAuth
+#   Release: https://github.com/KEYDALTR/kAuth/releases
+#
+# ------------------------------- FORMAT DESTEĞİ -----------------------------
+#
+#   Tüm mesajlar MiniMessage formatını destekler:
+#     <color:#RRGGBB>metin</color>      → hex renk
+#     <gradient:#A:#B:#C>metin</gradient> → gradient
+#     <bold>, <italic>, <underline>, <st> (strikethrough)
+#     <newline> veya <br>                → yeni satır
+#     <rainbow>, <obfuscated>
+#   Renk paleti referansı: https://htmlcolorcodes.com/
+#   MiniMessage dokümanları: https://docs.advntr.dev/minimessage/format.html
+#
+# ------------------------------- PLACEHOLDER ---------------------------------
+#
+#   Mesajlarda ve template'lerde kullanılabilir:
+#     %player_name% → oyuncu adı
+#     %player%      → oyuncu adı (logging için)
+#     %ip%          → oyuncunun IP adresi
+#     %time%        → kalan saniye (countdown için)
+#     %attempts%    → yanlış deneme sayısı / kalan hak
+#     %min%, %max%  → şifre uzunluğu limitleri
+#     %email%       → e-posta adresi
+#     %code%        → doğrulama kodu
+#     %expiry%      → kod geçerlilik süresi (dakika)
+#     %date%        → tarih/saat (yyyy-MM-dd HH:mm:ss)
+#
+# ------------------------------- SES İSİMLERİ --------------------------------
+#
+#   Geçerli ses isimleri için Bukkit Sound enum'una bakınız:
+#   https://jd.papermc.io/paper/1.21.11/org/bukkit/Sound.html
+#   Örnek: ENTITY_PLAYER_LEVELUP, BLOCK_NOTE_BLOCK_HAT, ENTITY_VILLAGER_NO
+#
+##############################################################################
 
-# ==================== VERİTABANI ====================
+
+# ============================================================================
+#                              VERİTABANI
+# ============================================================================
+# kAuth hem SQLite (tek sunucu) hem de MySQL/MariaDB (çoklu sunucu) destekler.
+# Velocity senkronizasyonu için MySQL/MariaDB ÖNERİLİR.
 database:
-  # sqlite veya mysql
+  # Veritabanı tipi: "sqlite" veya "mysql"
+  # sqlite → plugins/kAuth/kauth.db (tek sunucu için idealdir)
+  # mysql  → merkezi MySQL/MariaDB (proxy network için ÖNERİLİR)
   type: "sqlite"
+
+  # MySQL / MariaDB bağlantı ayarları (yalnızca type: mysql iken kullanılır)
   mysql:
     host: "localhost"
     port: 3306
     database: "kauth"
     username: "root"
     password: ""
-    # HikariCP bağlantı havuzu boyutu
+    # HikariCP connection pool boyutu (önerilen: 10)
+    # Düşük trafik: 5-10 | Orta: 10-20 | Yüksek: 20-30
     pool-size: 10
 
-# ==================== VELOCITY ====================
+
+# ============================================================================
+#                              VELOCITY PROXY
+# ============================================================================
+# Velocity proxy desteği. Paper backend sunucuları arasında giriş durumunu
+# senkronize eder (bir sunucuda giriş yapan oyuncu diğer sunuculara geçince
+# tekrar şifre sormaz).
+#
+# KURULUM:
+#   1) Bu ayarı 'true' yapın
+#   2) kAuth-Velocity-*.jar dosyasını Velocity proxy'nin plugins/ dizinine atın
+#   3) Velocity'yi başlatın, plugins/kauth/config.properties otomatik oluşur
+#   4) LimboFilter kullanıyorsanız config.properties içinde ignored-servers
+#      değerine limbo sunucunuzun adını yazın
+#
+# NOT: Velocity modu için MySQL/MariaDB önerilir (SQLite dosya kilidi yüzünden
+# çoklu sunucu paylaşımına uygun değildir).
 velocity:
-  # Velocity proxy senkronizasyonu
   enabled: false
 
-# ==================== E-POSTA AYARLARI ====================
+  # GÜVENLİK KRİTİK: HMAC-SHA256 shared secret
+  # Velocity proxy ve tüm Paper backend sunucularında AYNI değer olmalıdır.
+  # Bu secret olmadan kötü niyetli oyuncular plugin messaging channel'ına
+  # sahte LOGIN mesajı gönderip auth bypass yapabilirler.
+  #
+  # Velocity'yi ilk başlattığınızda plugins/kauth/config.properties otomatik
+  # oluşur ve rastgele bir secret üretir. O değeri buraya YAPIŞTIRIN.
+  #
+  # Örnek:
+  #   secret: "7a9f3c8b2d4e1f6a9c5b8e2d7f4a1c6b9e3d8f5a2c7b4e1d6f9a3c8b5e2d7f4a"
+  secret: ""
+
+
+# ============================================================================
+#                              E-POSTA / SMTP
+# ============================================================================
+# E-posta doğrulama ve şifre sıfırlama için SMTP ayarları.
+#
+# YAYGIN SAĞLAYICILAR:
+#   Gmail     : host=smtp.gmail.com  port=587  starttls=true  ssl=false
+#               (App Password ZORUNLU → https://myaccount.google.com/apppasswords)
+#   Outlook   : host=smtp-mail.outlook.com port=587 starttls=true ssl=false
+#   Yandex    : host=smtp.yandex.com port=465 starttls=false ssl=true
+#   Yahoo     : host=smtp.mail.yahoo.com port=587 starttls=true ssl=false
+#   SendGrid  : host=smtp.sendgrid.net port=587 starttls=true ssl=false
+#               (username=apikey, password=<SG API key>)
 email:
   # E-posta sistemi aktif/pasif
+  # false → e-posta doğrulama ve /sifresifirla devre dışı
   enabled: false
+
   smtp:
     host: "smtp.gmail.com"
     port: 587
     username: ""
     password: ""
+    # Gönderen adresi (genellikle username ile aynı)
     from: "noreply@example.com"
-    # STARTTLS kullan (587 portu için)
+    # STARTTLS (587 portu için) — Gmail/Outlook
     starttls: true
-    # SSL bağlantı (465 portu için)
+    # SSL/TLS (465 portu için) — Yandex vb.
     ssl: false
+
   verification:
-    # Doğrulama kodu uzunluğu
+    # Doğrulama kodu uzunluğu (4-8 arası önerilir)
     code-length: 6
     # Kod geçerlilik süresi (dakika)
     code-expiry-minutes: 10
-    # Kayıt sırasında e-posta doğrulaması zorunlu mu
+    # Kayıt sırasında e-posta doğrulaması zorunlu mu?
+    # true  → oyuncu kodu girmeden hesap aktif olmaz
+    # false → kayıt anında aktif, e-posta sadece şifre sıfırlama için
     required-on-register: true
-  templates:
-    verification-subject: "kAuth - E-Posta Doğrulama"
-    verification-body: "Doğrulama kodunuz: %code%\nBu kod %expiry% dakika geçerlidir."
-    reset-subject: "kAuth - Şifre Sıfırlama"
-    reset-body: "Şifre sıfırlama kodunuz: %code%\nBu kod %expiry% dakika geçerlidir."
 
-# ==================== LOGLAMA ====================
+  templates:
+    # Doğrulama kodu e-postası (%code%, %expiry% placeholder destekler)
+    verification-subject: "kAuth - E-Posta Doğrulama"
+    verification-body: |
+      Merhaba,
+
+      kAuth hesap doğrulama kodunuz: %code%
+      Bu kod %expiry% dakika boyunca geçerlidir.
+
+      İyi oyunlar!
+
+    # Şifre sıfırlama e-postası
+    reset-subject: "kAuth - Şifre Sıfırlama"
+    reset-body: |
+      Merhaba,
+
+      Şifre sıfırlama kodunuz: %code%
+      Bu kod %expiry% dakika boyunca geçerlidir.
+
+      Bu isteği siz yapmadıysanız bu e-postayı yok sayın.
+
+
+# ============================================================================
+#                              LOGLAMA
+# ============================================================================
+# Auth olaylarını konsola yazdır. İzleme, güvenlik denetimi ve debug için.
 logging:
-  # Giriş/kayıt/çıkış olaylarını konsola logla
+  # Loglama aktif/pasif
   enabled: true
-  # Log formatı
-  login: "[kAuth] %player% başarıyla giriş yaptı. (IP: %ip%)"
-  register: "[kAuth] %player% yeni hesap oluşturdu. (IP: %ip%)"
-  logout: "[kAuth] %player% çıkış yaptı."
-  failed-login: "[kAuth] %player% yanlış şifre girdi. (Deneme: %attempts%) (IP: %ip%)"
-  kick-timeout: "[kAuth] %player% süre dolduğu için atıldı."
-  kick-attempts: "[kAuth] %player% çok fazla yanlış deneme yaptığı için atıldı."
-  rule-accepted: "[kAuth] %player% sunucu kurallarını kabul etti. (IP: %ip%, Tarih: %date%)"
-  rule-declined: "[kAuth] %player% sunucu kurallarını reddetti. (IP: %ip%, Tarih: %date%)"
+
+  # Log formatları (%player%, %ip%, %attempts%, %date% placeholder)
+  login:            "[kAuth] %player% başarıyla giriş yaptı. (IP: %ip%)"
+  register:         "[kAuth] %player% yeni hesap oluşturdu. (IP: %ip%)"
+  logout:           "[kAuth] %player% çıkış yaptı."
+  failed-login:     "[kAuth] %player% yanlış şifre girdi. (Deneme: %attempts%) (IP: %ip%)"
+  kick-timeout:     "[kAuth] %player% süre dolduğu için atıldı."
+  kick-attempts:    "[kAuth] %player% çok fazla yanlış deneme yaptığı için atıldı."
+  rule-accepted:    "[kAuth] %player% sunucu kurallarını kabul etti. (IP: %ip%, Tarih: %date%)"
+  rule-declined:    "[kAuth] %player% sunucu kurallarını reddetti. (IP: %ip%, Tarih: %date%)"
   password-changed: "[kAuth] %player% şifresini değiştirdi. (IP: %ip%)"
 
-# ==================== GİRİŞ AYARLARI ====================
+
+# ============================================================================
+#                              GİRİŞ / KAYIT KURALLARI
+# ============================================================================
 auth:
+  # -------------------- Şifre Politikası --------------------
+  # Minimum / maksimum şifre uzunluğu
   min-password-length: 4
   max-password-length: 30
+
   # Kayıt sırasında şifre tekrarı alanı istensin mi?
-  # true = /kayit <şifre> <tekrar>  (2 kez şifre)
-  # false = /kayit <şifre>           (tek şifre)
+  # true  → /kayit <şifre> <tekrar>  (iki kez şifre girilmesini ister)
+  # false → /kayit <şifre>            (tek şifre, dialog'da 2. alan gizlenir)
   require-password-confirmation: true
-  # Giriş yapma süresi (saniye) - süre dolunca oyuncu atılır (0 = devre dışı)
+
+  # Zayıf şifreleri engelle
+  # Engellenenler: 1234, 12345, 123456, password, sifre, qwerty, abcdef,
+  # 111111, 000000, oyuncu adının kendisi, tek karakter tekrarı (aaaa gibi)
+  block-weak-passwords: true
+
+  # -------------------- Zaman Aşımı --------------------
+  # Giriş/kayıt için süre (saniye) — süre dolunca oyuncu atılır
+  # 0 = süre sınırı yok
   login-timeout: 60
-  # Maksimum yanlış şifre denemesi (0 = sınırsız)
-  # Bu sayıyı aşan oyuncu sunucudan atılır
-  max-login-attempts: 3
-  # Oturum sistemi - aynı IP ile tekrar girişte şifre sorma (dakika, 0 = devre dışı)
+
+  # -------------------- Oturum Sistemi --------------------
+  # Oyuncu başarılı giriş yaptıktan sonra bu süre kadar (dakika),
+  # AYNI IP'den bağlanırsa tekrar şifre sorulmaz.
+  # /cikis komutu ile çıkış yapılırsa bu oturum iptal edilir.
+  # 0 = devre dışı (her reconnect'te şifre sorulur)
   session-timeout: 30
-  # Giriş yapmadan önce oyuncuya körlük efekti ver
+
+  # Son giriş bilgisini göster (IP + ne zaman) — başarılı girişten sonra
+  # oyuncuya 'Son giriş: 2 dakika önce | IP: x.x.x.x' şeklinde gösterir
+  show-last-login: true
+
+  # -------------------- Brute-Force Koruması --------------------
+  # Bir oyuncunun yapabileceği max yanlış şifre denemesi
+  # Aşarsa kick edilir. 0 = sınırsız (önerilmez)
+  max-login-attempts: 3
+
+  # IP bazlı brute-force koruması - bu kadar yanlış denemeden sonra IP banlı
+  # 0 = devre dışı. IP sayaçları 5 dakikada bir otomatik sıfırlanır.
+  max-ip-attempts: 20
+
+  # IP engelleme süresi (dakika) — max-ip-attempts aşılırsa
+  ip-block-minutes: 10
+
+  # IP engellenmişse oyuncu sunucuya hiç bağlanamasın
+  # true  → AsyncPlayerPreLoginEvent'te kick (sunucu kaynağı harcamadan)
+  # false → sadece login denemesinde kick (dialog açılır, sonra kick)
+  ip-ban-on-prelogin: true
+
+  # IP engel kick mesajı (%time% = kalan saniye)
+  ip-block-kick-message: "<color:#FF6B6B>⛔ IP adresiniz geçici olarak engellendi!</color><newline><color:#B0C4D4>Kalan süre: <color:#FFD93D>%time%</color> saniye</color><newline><color:#8FA8B8>Çok fazla yanlış şifre girdiniz.</color>"
+
+  # -------------------- Hesap Limitleri --------------------
+  # Aynı IP'den açılabilecek maksimum hesap sayısı (multi-account engeli)
+  # 0 = sınırsız
+  max-accounts-per-ip: 3
+
+  # -------------------- Giriş Öncesi Koruma --------------------
+  # Oyuncu giriş yapana kadar aşağıdaki kısıtlamalar uygulanır.
+
+  # Körlük efekti (oyuncu etrafı göremez)
   blind-effect: true
-  # Giriş yapmadan önce oyuncuyu dondur (hareket engelle)
+
+  # Hareket engeli (oyuncu yerinden kımıldayamaz)
   freeze-player: true
-  # Giriş yapmadan önce sohbeti engelle
+
+  # Sohbet engeli (şifresini yanlışlıkla chat'e yazmasın)
   block-chat: true
-  # Giriş yapmadan önce komutları engelle
+
+  # Komut engeli (sadece auth komutları çalışır)
   block-commands: true
-  # İzin verilen komutlar (giriş yapmadan kullanılabilir)
+
+  # Giriş yapmadan kullanılabilen komutlar
+  # /help, /msg, /login vb. dışındaki her şey engellenir.
+  # GÜVENLIK: Buraya ekleyeceğiniz her komut giriş yapmadan çalışır, dikkat!
   allowed-commands:
     - "/kauth"
     - "/ka"
@@ -106,49 +271,61 @@ auth:
     - "/sifresifirla"
     - "/resetpassword"
     - "/rp"
-  # Zayıf şifreleri engelle (123456, qwerty, oyuncu adı vs.)
-  block-weak-passwords: true
-  # IP bazlı brute-force koruması - bu kadar başarısız denemeden sonra IP engellenir
-  # 0 = devre dışı
-  max-ip-attempts: 20
-  # IP engellenme süresi (dakika)
-  ip-block-minutes: 10
-  # IP engellenmişse oyuncu sunucuya hiç bağlanamasın (prelogin aşamasında kick)
-  # false = sadece login denemesinde kick
-  ip-ban-on-prelogin: true
-  # IP engeli kick mesajı (%time% = kalan saniye)
-  ip-block-kick-message: "<color:#FF6B6B>⛔ IP adresiniz geçici olarak engellendi!</color><newline><color:#B0C4D4>Kalan süre: <color:#FFD93D>%time%</color> saniye</color><newline><color:#8FA8B8>Çok fazla yanlış şifre girdiniz.</color>"
-  # Aynı IP'den maksimum hesap sayısı (0 = sınırsız)
-  max-accounts-per-ip: 3
-  # Son giriş bilgisini göster (IP ve zaman)
-  show-last-login: true
-  # Timeout kick mesajı
+
+  # -------------------- Kick Mesajları --------------------
+  # Süre dolduğunda kick mesajı
   timeout-kick-message: "<color:#FF6B6B>Giriş süresi doldu! Tekrar bağlanınız.</color>"
-  # Max deneme kick mesajı
+
+  # Max deneme aşıldığında kick mesajı
   max-attempts-kick-message: "<color:#FF6B6B>Çok fazla yanlış deneme! Tekrar bağlanınız.</color>"
 
-# ==================== DİALOG AYARLARI ====================
+
+# ============================================================================
+#                              DİALOG AYARLARI (1.21.5+ client)
+# ============================================================================
+# kAuth, client sürümüne göre otomatik mod seçer:
+#   - 1.21.5+ client → Modern Dialog GUI (aşağıdaki ayarlar)
+#   - Eski client    → Chat tabanlı fallback (komut ile giriş/kayıt)
+#
+# Dialog görünümü ve davranışı:
 dialog:
+  # Oyuncu ESC ile dialog'u kapatabilsin mi?
+  # false → zorunlu, sadece submit/cancel butonu ile kapanır (ÖNERİLEN)
   canCloseWithEscape: false
+  # Dialog sütun sayısı
   columns: 2
 
-# ==================== GİRİŞ DİALOGU ====================
+
+# ============================================================================
+#                              GİRİŞ DİALOGU
+# ============================================================================
 login:
+  # Dialog üst başlığı (placeholder: %player_name%)
   title: "<color:#00D4FF>KEYDAL</color> <color:#3A4F6A>│</color> <color:#4AEAFF>Giriş Yap</color>"
+
+  # Dialog gövdesi (her satır yeni bir line)
   body:
     - ""
     - "<gradient:#00D4FF:#4AEAFF:#2E5CFF>KEYDAL NETWORK</gradient>"
     - ""
     - "<color:#B0C4D4>Hoş geldiniz! Hesabınıza giriş yapınız.</color>"
     - ""
+
+  # Dialog genişliği (piksel)
   width: 200
+
+  # Submit butonu
   actions:
     - type: submit
       label: "<color:#4AEAFF>Giriş Yap</color>"
-  # İptal butonu
+
+  # İptal butonu (basınca oyuncu kick edilir)
   cancel-label: "<color:#FF6B6B>İptal</color>"
 
-# ==================== KAYIT DİALOGU ====================
+
+# ============================================================================
+#                              KAYIT DİALOGU
+# ============================================================================
 register:
   title: "<color:#00D4FF>KEYDAL</color> <color:#3A4F6A>│</color> <color:#C8E0FF>Kayıt Ol</color>"
   body:
@@ -158,18 +335,31 @@ register:
     - "<color:#B0C4D4>Yeni bir hesap oluşturunuz.</color>"
     - ""
   width: 200
+
+  # E-posta input alanı (kayıt sırasında)
+  # enabled: true → dialog'da e-posta alanı gösterilir
+  # email.enabled de true ise, zorunlu doğrulama için kullanılır
   email_input:
     enabled: false
     label: "E-Posta"
+
   actions:
     - type: submit
       label: "<color:#C8E0FF>Kayıt Ol</color>"
   cancel-label: "<color:#FF6B6B>İptal</color>"
 
-# ==================== KURAL DİALOGU ====================
+
+# ============================================================================
+#                              KURAL DİALOGU
+# ============================================================================
+# Yeni oyuncu kayıt olmadan önce sunucu kurallarını kabul etmelidir.
+# Kabul etmezse kick edilir, kayıt olamaz.
 rule:
+  # Kural dialogu aktif/pasif (false → doğrudan kayıt dialoguna geçer)
   enabled: true
+
   title: "<color:#00D4FF>KEYDAL</color> <color:#3A4F6A>│</color> <color:#8FA8B8>Sunucu Kuralları</color>"
+
   body:
     - ""
     - "<gradient:#00D4FF:#4AEAFF:#2E5CFF>KEYDAL NETWORK</gradient>"
@@ -181,60 +371,94 @@ rule:
     - "<color:#4AEAFF>5.</color> <color:#B0C4D4>Yetkililerin kararlarına saygı gösterin.</color>"
     - ""
     - "<color:#B0C4D4>Kuralları kabul etmek için</color> <color:#4AEAFF>Onayla</color> <color:#B0C4D4>butonuna basın.</color>"
+
+  # Onay butonu
   confirmButton: "<color:#4AEAFF>Onayla</color>"
-  # Kabul etmeme kick mesajı
+
+  # Kuralları kabul etmeyenin kick mesajı
   decline-kick-message: "<color:#FF6B6B>Kuralları kabul etmediniz.</color>"
+
+  # Kural onay checkbox'ı
   agree:
+    # Checkbox gösterilsin mi (true → checkbox + onay butonu)
     enabled: true
     key: "agree"
     label: "<color:#B0C4D4>Kuralları okudum ve kabul ediyorum</color>"
 
-# ==================== GÖRSEL EFEKTLER ====================
+
+# ============================================================================
+#                              GÖRSEL/SES EFEKTLERİ
+# ============================================================================
+# Her auth olayı için görsel ve sesli efekt yapılandırması.
+# Her section bağımsız - istediğinizi pasifleştirebilirsiniz.
 effects:
-  # === Giriş yapmadan önce (bekleme ekranı) ===
+
+  # -------------------- BEKLEME EKRANI --------------------
+  # Oyuncu henüz giriş yapmadığı sırada gösterilen efektler
   waiting:
-    # Actionbar mesajı (sürekli gösterilir)
-    # %time% = kalan süre (saniye) - login-timeout kullanılır
+
+    # ~~~ ACTIONBAR ~~~
+    # Ekranın alt kısmında hotbar üstü mesaj
+    # NOT: Dialog açıkken client HUD'u gizlediği için görünmez → chat fallback mode için idealdir
     actionbar:
       enabled: true
+      # %time% = kalan saniye (auth.login-timeout'tan hesaplanır)
       message: "<color:#FF6B6B>⚠</color> <color:#B0C4D4>Lütfen giriş yapınız! Kalan süre:</color> <color:#FF6B6B>%time%</color> <color:#B0C4D4>sn</color> <color:#FF6B6B>⚠</color>"
+      # Yenileme sıklığı (tick cinsinden, 20 = 1 saniye)
       update-ticks: 20
-    # Title (girişte bir kere gösterilir)
+
+    # ~~~ BAŞLANGIÇ TITLE ~~~
+    # Giriş anında bir kez gösterilen karşılama title'ı
     title:
       enabled: true
       title: "<gradient:#00D4FF:#4AEAFF:#2E5CFF>KEYDAL</gradient>"
       subtitle: "<color:#B0C4D4>Giriş yapmak için dialogu kullanınız</color>"
+      # Tick cinsinden (20 tick = 1 saniye)
       fade-in: 10
       stay: 60
       fade-out: 20
-    # Bossbar (kalan süre gösterimi)
-    # NOT: Dialog açıkken bossbar HUD'un üstünde görünmez (client kısıtlaması)
-    # Dialog mode için title-countdown kullanın
-    # %time% = kalan saniye
+
+    # ~~~ BOSSBAR COUNTDOWN ~~~
+    # Ekranın üstünde progress bar (kalan süre görsel olarak azalır)
+    # NOT: Dialog açıkken görünmez (client kısıtlaması) → title-countdown kullanın
     bossbar:
       enabled: true
+      # %time% = kalan saniye
       title: "<color:#FF6B6B>⏱ Giriş için kalan süre: </color><color:#FFD93D>%time%</color><color:#FF6B6B> saniye</color>"
-      # Renkler: PINK, BLUE, RED, GREEN, YELLOW, PURPLE, WHITE
+      # Renk seçenekleri: PINK, BLUE, RED, GREEN, YELLOW, PURPLE, WHITE
       color: "RED"
-      # Stiller: PROGRESS, NOTCHED_6, NOTCHED_10, NOTCHED_12, NOTCHED_20
+      # Stil seçenekleri:
+      #   PROGRESS     → düz çubuk (bölümsüz)
+      #   NOTCHED_6    → 6 bölüm
+      #   NOTCHED_10   → 10 bölüm
+      #   NOTCHED_12   → 12 bölüm
+      #   NOTCHED_20   → 20 bölüm (saniye bazlı countdown için uygun)
       overlay: "NOTCHED_20"
-    # Title/subtitle countdown - Dialog açıkken de görünür (önerilen)
-    # Her saniye yenilenir, kesintisiz countdown
-    # %time% = kalan saniye
+
+    # ~~~ TITLE COUNTDOWN (ÖNERİLEN) ~~~
+    # Her saniye yenilenen title/subtitle - DIALOG AÇIKKEN DE GÖRÜNÜR
+    # Dialog mode kullanıyorsanız kalan süreyi göstermek için bunu açın
     title-countdown:
       enabled: true
+      # %time% = kalan saniye
       title: "<color:#FF6B6B>⏱ </color><color:#FFD93D>%time%</color><color:#FF6B6B> sn</color>"
       subtitle: "<color:#B0C4D4>Lütfen giriş yapınız</color>"
-    # Arka plan ses döngüsü (oyuncu sıkılmasın diye)
+
+    # ~~~ ARKA PLAN SES DÖNGÜSÜ ~~~
+    # Oyuncu bekleme süresinde sıkılmasın diye belirli aralıklarla ses çalar
+    # Geçerli ses isimleri: https://jd.papermc.io/paper/1.21.11/org/bukkit/Sound.html
     sound-loop:
       enabled: true
       type: "BLOCK_NOTE_BLOCK_HAT"
+      # 0.0 - 2.0 arası
       volume: 0.5
+      # 0.5 (düşük) - 2.0 (yüksek) arası
       pitch: 1.0
-      # Ses çalma aralığı (tick cinsinden, 20 tick = 1 saniye)
+      # Ses çalma aralığı (tick cinsinden - 20 tick = 1 saniye, 40 = 2sn)
       interval-ticks: 40
 
-  # === Başarılı giriş sonrası ===
+
+  # -------------------- BAŞARILI GİRİŞ --------------------
   login-success:
     title:
       enabled: true
@@ -252,7 +476,8 @@ effects:
       enabled: true
       message: "<color:#4AEAFF>✔ Başarıyla giriş yapıldı!</color>"
 
-  # === Başarılı kayıt sonrası ===
+
+  # -------------------- BAŞARILI KAYIT --------------------
   register-success:
     title:
       enabled: true
@@ -270,7 +495,8 @@ effects:
       enabled: true
       message: "<color:#C8E0FF>✔ Hesabınız başarıyla oluşturuldu!</color>"
 
-  # === Yanlış şifre girişi ===
+
+  # -------------------- YANLIŞ ŞİFRE --------------------
   login-fail:
     title:
       enabled: true
@@ -285,7 +511,8 @@ effects:
       volume: 0.8
       pitch: 1.0
 
-  # === Çıkış yaptığında ===
+
+  # -------------------- ÇIKIŞ --------------------
   logout:
     title:
       enabled: true
@@ -300,22 +527,33 @@ effects:
       volume: 0.8
       pitch: 0.5
 
-# ==================== MESAJLAR ====================
+
+# ============================================================================
+#                              MESAJLAR
+# ============================================================================
+# Oyunculara gösterilen tüm yazılı mesajlar.
+# MiniMessage formatı + placeholder destekler.
 messages:
+
+  # -------------------- GİRİŞ DİALOGU --------------------
   login:
+    # Şifre input alanı label
     button_password: "Şifre"
     empty_password: "<color:#FF6B6B>Lütfen şifrenizi giriniz!</color>"
     wrong_password: "<color:#FF6B6B>Yanlış şifre! Tekrar deneyiniz.</color>"
     need_register: "<color:#8FA8B8>Hesap bulunamadı. Lütfen kayıt olunuz.</color>"
     cancelled: "<color:#FF6B6B>Giriş işlemi iptal edildi.</color>"
     success: "<color:#4AEAFF>Başarıyla giriş yaptınız!</color>"
+    # %attempts% = kalan deneme hakkı
     attempts-left: "<color:#8FA8B8>Kalan deneme hakkı: %attempts%</color>"
 
+  # -------------------- KAYIT DİALOGU --------------------
   register:
     button_password: "Şifre"
     confirm_password: "Şifre Tekrar"
     need_both: "<color:#FF6B6B>Lütfen şifre ve onay alanlarını doldurunuz!</color>"
     mismatch: "<color:#FF6B6B>Şifreler uyuşmuyor! Tekrar deneyiniz.</color>"
+    # %min% ve %max% = auth.min/max-password-length
     too_short: "<color:#FF6B6B>Şifre en az %min% karakter olmalıdır!</color>"
     too_long: "<color:#FF6B6B>Şifre en fazla %max% karakter olmalıdır!</color>"
     invalid: "<color:#FF6B6B>Geçersiz şifre!</color>"
@@ -327,16 +565,20 @@ messages:
     cancelled: "<color:#FF6B6B>Kayıt işlemi iptal edildi.</color>"
     success: "<color:#4AEAFF>Başarıyla kayıt oldunuz!</color>"
 
+  # -------------------- ÇIKIŞ --------------------
   logout:
     success: "<color:#4AEAFF>Başarıyla çıkış yaptınız.</color>"
     not-logged-in: "<color:#FF6B6B>Zaten giriş yapmamışsınız!</color>"
 
+  # -------------------- ŞİFRE DEĞİŞTİRME (kendi hesabı) --------------------
   changepassword-self:
     success: "<color:#4AEAFF>Şifreniz başarıyla değiştirildi!</color>"
     wrong-old: "<color:#FF6B6B>Eski şifreniz yanlış!</color>"
     usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /changepassword <eski şifre> <yeni şifre></gradient>"
     not-registered: "<color:#FF6B6B>Kayıtlı değilsiniz!</color>"
 
+  # -------------------- CHAT MODE (eski clientler) --------------------
+  # Dialog API desteklemeyen clientler /giris ve /kayit komutlarıyla çalışır
   chat-login:
     success: "<color:#4AEAFF>Başarıyla giriş yaptınız!</color>"
     usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /login <şifre></gradient>"
@@ -347,10 +589,12 @@ messages:
     usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /register <şifre> <şifre tekrar></gradient>"
     already: "<color:#8FA8B8>Zaten kayıtlısınız!</color>"
 
+  # -------------------- OTURUM --------------------
   session:
+    # Auto-login olduğunda gösterilir (session-timeout içinde reconnect)
     resumed: "<color:#4AEAFF>Oturumunuz devam ediyor, otomatik giriş yapıldı.</color>"
 
-  # Admin komut mesajları
+  # -------------------- ADMİN KOMUT MESAJLARI --------------------
   admin:
     reload: "<color:#4AEAFF>kAuth yapılandırması yeniden yüklendi.</color>"
     no-permission: "<color:#FF6B6B>Bu komutu kullanma yetkiniz yok.</color>"
@@ -364,24 +608,26 @@ messages:
     usage-login: "<gray>/giris <şifre></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Giriş yap</color>"
     usage-register: "<gray>/kayit <şifre> <şifre tekrar></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Kayıt ol</color>"
     usage-changepassword-self: "<gray>/sifredegistir <eski> <yeni></gray> <color:#3A4F6A>-</color> <color:#B0C4D4>Şifre değiştir</color>"
+    # %player% placeholder
     unregister-success: "<color:#4AEAFF>%player% oyuncusunun kaydı silindi.</color>"
     unregister-fail: "<color:#FF6B6B>%player% oyuncusu bulunamadı.</color>"
     changepassword-success: "<color:#4AEAFF>%player% oyuncusunun şifresi değiştirildi.</color>"
     changepassword-fail: "<color:#FF6B6B>%player% oyuncusu bulunamadı.</color>"
 
-  # E-posta doğrulama mesajları
+  # -------------------- E-POSTA DOĞRULAMA --------------------
   email-verify:
     usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /dogrula <kod></gradient>"
     no-pending: "<color:#FF6B6B>Bekleyen bir doğrulama kodunuz bulunmuyor!</color>"
     invalid-code: "<color:#FF6B6B>Geçersiz veya süresi dolmuş kod!</color>"
     success: "<color:#4AEAFF>E-posta adresiniz doğrulandı!</color>"
 
-  # Şifre sıfırlama mesajları
+  # -------------------- ŞİFRE SIFIRLAMA --------------------
   password-reset:
     usage: "<gradient:#8FA8B8:#B0C4D4>Kullanım: /sifresifirla <kullanıcı> veya /sifresifirla onayla <kod> <yenişifre></gradient>"
     not-found: "<color:#FF6B6B>Kullanıcı bulunamadı!</color>"
     no-email: "<color:#FF6B6B>Bu hesapta e-posta adresi bulunamadı!</color>"
     email-not-verified: "<color:#FF6B6B>Bu hesabın e-postası doğrulanmamış!</color>"
+    # %email% = maskelenmiş e-posta (e***@***.com)
     code-sent: "<color:#4AEAFF>Şifre sıfırlama kodu %email% adresine gönderildi.</color>"
     invalid-code: "<color:#FF6B6B>Geçersiz veya süresi dolmuş kod!</color>"
     no-pending: "<color:#FF6B6B>Bekleyen bir sıfırlama kodunuz bulunmuyor!</color>"

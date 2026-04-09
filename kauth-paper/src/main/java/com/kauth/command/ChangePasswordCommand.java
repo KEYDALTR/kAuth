@@ -2,11 +2,14 @@ package com.kauth.command;
 
 import com.kauth.KAuth;
 import com.kauth.auth.AuthService;
+import com.kauth.common.storage.DataAccessException;
 import com.kauth.config.ConfigManager;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+
+import java.util.logging.Level;
 
 public class ChangePasswordCommand implements CommandExecutor {
 
@@ -35,21 +38,56 @@ public class ChangePasswordCommand implements CommandExecutor {
         final String oldPassword = args[0];
         final String newPassword = args[1];
 
-        // Async: DB + PBKDF2
+        AuthService.PasswordValidationResult validation = auth.validatePassword(player.getName(), newPassword);
+        switch (validation) {
+            case TOO_SHORT -> {
+                String msg = config.msg("register.too_short").replace("%min%", String.valueOf(auth.getMinPasswordLength()));
+                player.sendMessage(config.parse(msg));
+                return true;
+            }
+            case TOO_LONG -> {
+                String msg = config.msg("register.too_long").replace("%max%", String.valueOf(auth.getMaxPasswordLength()));
+                player.sendMessage(config.parse(msg));
+                return true;
+            }
+            case WEAK -> {
+                player.sendMessage(config.msgComponent("register.invalid"));
+                return true;
+            }
+            case OK -> {}
+        }
+
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            if (!auth.isRegistered(player.getName())) {
-                plugin.getServer().getScheduler().runTask(plugin, () ->
-                        player.sendMessage(config.msgComponent("changepassword-self.not-registered")));
+            final boolean registered;
+            final boolean correctOld;
+            final boolean success;
+            try {
+                registered = auth.isRegistered(player.getName());
+                if (!registered) {
+                    plugin.getServer().getScheduler().runTask(plugin, () ->
+                            player.sendMessage(config.msgComponent("changepassword-self.not-registered")));
+                    return;
+                }
+
+                correctOld = auth.checkPassword(player.getName(), oldPassword);
+                if (!correctOld) {
+                    plugin.getServer().getScheduler().runTask(plugin, () ->
+                            player.sendMessage(config.msgComponent("changepassword-self.wrong-old")));
+                    return;
+                }
+
+                success = auth.changePassword(player.getName(), newPassword);
+            } catch (DataAccessException e) {
+                plugin.getLogger().log(Level.SEVERE, "[kAuth] ChangePassword DB hatası", e);
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(config.parse(
+                                "<color:#FF6B6B>Veritabanı hatası, lütfen tekrar deneyiniz.</color>"));
+                    }
+                });
                 return;
             }
 
-            if (!auth.checkPassword(player.getName(), oldPassword)) {
-                plugin.getServer().getScheduler().runTask(plugin, () ->
-                        player.sendMessage(config.msgComponent("changepassword-self.wrong-old")));
-                return;
-            }
-
-            boolean success = auth.changePassword(player.getName(), newPassword);
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (success) {

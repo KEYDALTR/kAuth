@@ -2,6 +2,7 @@ package com.kauth.command;
 
 import com.kauth.KAuth;
 import com.kauth.auth.AuthService;
+import com.kauth.common.storage.DataAccessException;
 import com.kauth.config.ConfigManager;
 import com.kauth.dialog.VerificationDialogFactory;
 import com.kauth.email.EmailService;
@@ -12,6 +13,8 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffectType;
+
+import java.util.logging.Level;
 
 public class RegisterCommand implements CommandExecutor {
 
@@ -32,20 +35,13 @@ public class RegisterCommand implements CommandExecutor {
             return true;
         }
 
-        if (auth.isRegistered(player.getName())) {
-            player.sendMessage(config.msgComponent("chat-register.already"));
-            return true;
-        }
+        boolean requireConfirm = plugin.getConfigManager().getSettings().get().auth().requirePasswordConfirmation();
 
-        // Şifre tekrarı aç/kapa
-        boolean requireConfirm = plugin.getConfig().getBoolean("auth.require-password-confirmation", true);
-
-        String password;
-        String confirm;
-        String email;
+        final String password;
+        final String confirm;
+        final String email;
 
         if (requireConfirm) {
-            // /kayit <şifre> <tekrar> [email]
             if (args.length < 2) {
                 player.sendMessage(config.msgComponent("chat-register.usage"));
                 return true;
@@ -54,22 +50,29 @@ public class RegisterCommand implements CommandExecutor {
             confirm = args[1];
             email = args.length >= 3 ? args[2] : null;
         } else {
-            // /kayit <şifre> [email]
             if (args.length < 1) {
                 player.sendMessage(config.msgComponent("chat-register.usage"));
                 return true;
             }
             password = args[0];
-            confirm = args[0]; // tek şifre modu
+            confirm = args[0];
             email = args.length >= 2 ? args[1] : null;
         }
 
-        final String fPassword = password;
-        final String fConfirm = confirm;
-        final String fEmail = email;
-        // Async: PBKDF2 + DB
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            AuthService.RegisterResult result = auth.register(player, fPassword, fConfirm, fEmail);
+            final AuthService.RegisterResult result;
+            try {
+                result = auth.register(player, password, confirm, email);
+            } catch (DataAccessException e) {
+                plugin.getLogger().log(Level.SEVERE, "[kAuth] Register DB hatası", e);
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(config.parse(
+                                "<color:#FF6B6B>Veritabanı hatası, lütfen tekrar deneyiniz.</color>"));
+                    }
+                });
+                return;
+            }
 
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
@@ -84,13 +87,23 @@ public class RegisterCommand implements CommandExecutor {
                     case PENDING_EMAIL_VERIFICATION -> {
                         VerificationManager vm = plugin.getVerificationManager();
                         EmailService es = plugin.getEmailService();
-                        String code = vm.generateVerificationCode(player.getUniqueId(), fEmail);
-                        es.sendVerificationCode(fEmail, code);
-                        String maskedEmail = VerificationDialogFactory.maskEmail(fEmail);
-                        player.sendMessage(config.parse(
-                                "<color:#4AEAFF>Doğrulama kodu " + maskedEmail + " adresine gönderildi.</color>"));
-                        player.sendMessage(config.parse(
-                                "<color:#B0C4D4>Kodu girmek için: <color:#4AEAFF><bold>/dogrula <kod></bold></color></color>"));
+                        String code = vm.generateVerificationCode(player.getUniqueId(), email);
+                        es.sendVerificationCode(email, code).whenComplete((ok, err) -> {
+                            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                if (!player.isOnline()) return;
+                                if (ok != null && ok) {
+                                    String maskedEmail = VerificationDialogFactory.maskEmail(email);
+                                    player.sendMessage(config.parse(
+                                            "<color:#4AEAFF>Doğrulama kodu " + maskedEmail + " adresine gönderildi.</color>"));
+                                    player.sendMessage(config.parse(
+                                            "<color:#B0C4D4>Kodu girmek için: <color:#4AEAFF><bold>/dogrula <kod></bold></color></color>"));
+                                } else {
+                                    vm.removePendingVerification(player.getUniqueId());
+                                    player.sendMessage(config.parse(
+                                            "<color:#FF6B6B>E-posta gönderilemedi! Lütfen daha sonra tekrar deneyiniz.</color>"));
+                                }
+                            });
+                        });
                     }
                     case PASSWORD_MISMATCH -> player.sendMessage(config.msgComponent("register.mismatch"));
                     case PASSWORD_TOO_SHORT -> {
@@ -101,8 +114,12 @@ public class RegisterCommand implements CommandExecutor {
                         String msg = config.msg("register.too_long").replace("%max%", String.valueOf(auth.getMaxPasswordLength()));
                         player.sendMessage(config.parse(msg));
                     }
+                    case PASSWORD_INVALID -> player.sendMessage(config.msgComponent("register.invalid"));
+                    case ALREADY_REGISTERED -> player.sendMessage(config.msgComponent("register.already"));
                     case EMAIL_INVALID -> player.sendMessage(config.msgComponent("register.email_invalid"));
                     case EMAIL_ALREADY_USED -> player.sendMessage(config.msgComponent("register.email_already_used"));
+                    case IP_LIMIT -> player.sendMessage(config.parse(
+                            "<color:#FF6B6B>Bu IP adresinden maksimum hesap sayısına ulaşıldı!</color>"));
                     default -> player.sendMessage(config.msgComponent("register.failed"));
                 }
             });

@@ -13,8 +13,7 @@ public class MySQLDatabase implements AuthDatabase {
     private final int poolSize;
     private final Logger logger;
 
-    // HikariCP kullanılacak - Paper modülünde shadow ile dahil edilir
-    private Object dataSource; // HikariDataSource at runtime
+    private Object dataSource; // HikariDataSource
 
     public MySQLDatabase(String host, int port, String database,
                          String username, String password, int poolSize, Logger logger) {
@@ -48,6 +47,7 @@ public class MySQLDatabase implements AuthDatabase {
             upgrade();
         } catch (Exception e) {
             logger.severe("MySQL bağlantısı kurulamadı: " + e.getMessage());
+            throw new RuntimeException("MySQL init failed", e);
         }
     }
 
@@ -73,6 +73,7 @@ public class MySQLDatabase implements AuthDatabase {
             );
         } catch (SQLException e) {
             logger.severe("MySQL tablo oluşturulamadı: " + e.getMessage());
+            throw new RuntimeException("MySQL create table failed", e);
         }
     }
 
@@ -96,25 +97,26 @@ public class MySQLDatabase implements AuthDatabase {
     }
 
     @Override
-    public boolean isRegistered(String username) {
+    public boolean isRegistered(String username) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT 1 FROM kauth_users WHERE LOWER(username) = LOWER(?)")) {
             ps.setString(1, username);
-            return ps.executeQuery().next();
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
         } catch (SQLException e) {
-            logger.warning("Kayıt kontrol hatası: " + e.getMessage());
-            return false;
+            throw new DataAccessException("isRegistered failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public boolean register(String username, String uuid, String hashedPassword, String ip) {
+    public boolean register(String username, String uuid, String hashedPassword, String ip) throws DataAccessException {
         return registerWithEmail(username, uuid, hashedPassword, ip, null);
     }
 
     @Override
-    public boolean registerWithEmail(String username, String uuid, String hashedPassword, String ip, String email) {
+    public boolean registerWithEmail(String username, String uuid, String hashedPassword, String ip, String email) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO kauth_users (username, uuid, password, ip, register_date, email) VALUES (?, ?, ?, ?, ?, ?)")) {
@@ -124,30 +126,29 @@ public class MySQLDatabase implements AuthDatabase {
             ps.setString(4, ip);
             ps.setLong(5, System.currentTimeMillis());
             ps.setString(6, email);
-            ps.executeUpdate();
-            return true;
+            return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            logger.warning("Kayıt hatası: " + e.getMessage());
-            return false;
+            throw new DataAccessException("register failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public String getHashedPassword(String username) {
+    public String getHashedPassword(String username) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT password FROM kauth_users WHERE LOWER(username) = LOWER(?)")) {
             ps.setString(1, username);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getString("password");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getString("password");
+                return null;
+            }
         } catch (SQLException e) {
-            logger.warning("Şifre alma hatası: " + e.getMessage());
+            throw new DataAccessException("getHashedPassword failed: " + e.getMessage(), e);
         }
-        return null;
     }
 
     @Override
-    public void updateLastLogin(String username, String ip) {
+    public void updateLastLogin(String username, String ip) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "UPDATE kauth_users SET last_login = ?, ip = ?, logged_in = 1 WHERE LOWER(username) = LOWER(?)")) {
@@ -156,12 +157,12 @@ public class MySQLDatabase implements AuthDatabase {
             ps.setString(3, username);
             ps.executeUpdate();
         } catch (SQLException e) {
-            logger.warning("Son giriş güncelleme hatası: " + e.getMessage());
+            throw new DataAccessException("updateLastLogin failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public void setLoggedIn(String username, boolean loggedIn) {
+    public void setLoggedIn(String username, boolean loggedIn) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "UPDATE kauth_users SET logged_in = ? WHERE LOWER(username) = LOWER(?)")) {
@@ -169,48 +170,49 @@ public class MySQLDatabase implements AuthDatabase {
             ps.setString(2, username);
             ps.executeUpdate();
         } catch (SQLException e) {
-            logger.warning("Giriş durumu güncelleme hatası: " + e.getMessage());
+            throw new DataAccessException("setLoggedIn failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public boolean deleteUser(String username) {
+    public boolean deleteUser(String username) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "DELETE FROM kauth_users WHERE LOWER(username) = LOWER(?)")) {
             ps.setString(1, username);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            logger.warning("Kullanıcı silme hatası: " + e.getMessage());
-            return false;
+            throw new DataAccessException("deleteUser failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public int getAccountCountByIp(String ip) {
+    public int getAccountCountByIp(String ip) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT COUNT(*) FROM kauth_users WHERE ip = ?")) {
             ps.setString(1, ip);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getInt(1);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+                return 0;
+            }
         } catch (SQLException e) {
-            logger.warning("IP hesap sayısı hatası: " + e.getMessage());
+            throw new DataAccessException("getAccountCountByIp failed: " + e.getMessage(), e);
         }
-        return 0;
     }
 
     @Override
-    public String getLastLoginInfo(String username) {
+    public String getLastLoginInfo(String username) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT ip, last_login FROM kauth_users WHERE LOWER(username) = LOWER(?)")) {
             ps.setString(1, username);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                String ip = rs.getString("ip");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
                 long lastLogin = rs.getLong("last_login");
-                if (lastLogin == 0) return null;
+                if (rs.wasNull() || lastLogin == 0) return null;
+                String ip = rs.getString("ip");
+                if (ip == null) ip = "bilinmiyor";
                 long ago = (System.currentTimeMillis() - lastLogin) / 1000;
                 String timeStr;
                 if (ago < 60) timeStr = ago + " saniye önce";
@@ -220,13 +222,12 @@ public class MySQLDatabase implements AuthDatabase {
                 return timeStr + " | IP: " + ip;
             }
         } catch (SQLException e) {
-            logger.warning("Son giriş bilgisi hatası: " + e.getMessage());
+            throw new DataAccessException("getLastLoginInfo failed: " + e.getMessage(), e);
         }
-        return null;
     }
 
     @Override
-    public boolean changePassword(String username, String newHashedPassword) {
+    public boolean changePassword(String username, String newHashedPassword) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "UPDATE kauth_users SET password = ? WHERE LOWER(username) = LOWER(?)")) {
@@ -234,27 +235,27 @@ public class MySQLDatabase implements AuthDatabase {
             ps.setString(2, username);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            logger.warning("Şifre değiştirme hatası: " + e.getMessage());
-            return false;
+            throw new DataAccessException("changePassword failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public String getEmail(String username) {
+    public String getEmail(String username) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT email FROM kauth_users WHERE LOWER(username) = LOWER(?)")) {
             ps.setString(1, username);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getString("email");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getString("email");
+                return null;
+            }
         } catch (SQLException e) {
-            logger.warning("E-posta alma hatası: " + e.getMessage());
+            throw new DataAccessException("getEmail failed: " + e.getMessage(), e);
         }
-        return null;
     }
 
     @Override
-    public boolean setEmail(String username, String email) {
+    public boolean setEmail(String username, String email) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "UPDATE kauth_users SET email = ? WHERE LOWER(username) = LOWER(?)")) {
@@ -262,13 +263,12 @@ public class MySQLDatabase implements AuthDatabase {
             ps.setString(2, username);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            logger.warning("E-posta güncelleme hatası: " + e.getMessage());
-            return false;
+            throw new DataAccessException("setEmail failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public boolean setEmailVerified(String username, boolean verified) {
+    public boolean setEmailVerified(String username, boolean verified) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "UPDATE kauth_users SET email_verified = ? WHERE LOWER(username) = LOWER(?)")) {
@@ -276,52 +276,54 @@ public class MySQLDatabase implements AuthDatabase {
             ps.setString(2, username);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            logger.warning("E-posta doğrulama durumu hatası: " + e.getMessage());
-            return false;
+            throw new DataAccessException("setEmailVerified failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public boolean isEmailVerified(String username) {
+    public boolean isEmailVerified(String username) throws DataAccessException {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT email_verified FROM kauth_users WHERE LOWER(username) = LOWER(?)")) {
             ps.setString(1, username);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getInt("email_verified") == 1;
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt("email_verified") == 1;
+                return false;
+            }
         } catch (SQLException e) {
-            logger.warning("E-posta doğrulama kontrol hatası: " + e.getMessage());
+            throw new DataAccessException("isEmailVerified failed: " + e.getMessage(), e);
         }
-        return false;
     }
 
     @Override
-    public boolean isEmailUsed(String email) {
+    public boolean isEmailUsed(String email) throws DataAccessException {
         if (email == null) return false;
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT 1 FROM kauth_users WHERE LOWER(email) = LOWER(?)")) {
             ps.setString(1, email);
-            return ps.executeQuery().next();
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
         } catch (SQLException e) {
-            logger.warning("E-posta kullanım kontrol hatası: " + e.getMessage());
-            return false;
+            throw new DataAccessException("isEmailUsed failed: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public String getUsernameByEmail(String email) {
+    public String getUsernameByEmail(String email) throws DataAccessException {
         if (email == null) return null;
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
                 "SELECT username FROM kauth_users WHERE LOWER(email) = LOWER(?)")) {
             ps.setString(1, email);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getString("username");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getString("username");
+                return null;
+            }
         } catch (SQLException e) {
-            logger.warning("E-posta ile kullanıcı arama hatası: " + e.getMessage());
+            throw new DataAccessException("getUsernameByEmail failed: " + e.getMessage(), e);
         }
-        return null;
     }
 
     @Override

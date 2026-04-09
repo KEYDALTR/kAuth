@@ -39,5 +39,4 @@ spark.proto
 spark_sampler.proto
 spark/
 
-# Claude
 .claude/

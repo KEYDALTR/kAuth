@@ -1,6 +1,8 @@
 package com.kauth.command;
 
+import com.kauth.KAuth;
 import com.kauth.auth.AuthService;
+import com.kauth.common.storage.DataAccessException;
 import com.kauth.config.ConfigManager;
 import com.kauth.dialog.DialogProvider;
 import org.bukkit.Bukkit;
@@ -11,14 +13,17 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
 
 public class KAuthCommand implements TabExecutor {
 
+    private final KAuth plugin;
     private final ConfigManager config;
     private final AuthService auth;
     private final DialogProvider dialogProvider;
 
-    public KAuthCommand(ConfigManager config, AuthService auth, DialogProvider dialogProvider) {
+    public KAuthCommand(KAuth plugin, ConfigManager config, AuthService auth, DialogProvider dialogProvider) {
+        this.plugin = plugin;
         this.config = config;
         this.auth = auth;
         this.dialogProvider = dialogProvider;
@@ -37,15 +42,22 @@ public class KAuthCommand implements TabExecutor {
             case "cikis", "logout" -> {
                 if (!(sender instanceof Player player)) { sender.sendMessage(config.msgComponent("admin.player-only")); return true; }
                 if (!auth.isAuthenticated(player)) { player.sendMessage(config.msgComponent("logout.not-logged-in")); return true; }
-                auth.setAuthenticated(player, false);
-                player.sendMessage(config.msgComponent("logout.success"));
-                // Tam auth flow'u yeniden başlat
-                com.kauth.KAuth kauth = (com.kauth.KAuth) org.bukkit.Bukkit.getPluginManager().getPlugin("kAuth");
-                if (kauth != null) {
-                    org.bukkit.Bukkit.getScheduler().runTaskLater(kauth, () -> {
-                        if (player.isOnline()) kauth.getJoinListener().beginAuthFlow(player);
-                    }, 5L);
-                }
+                plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                    try {
+                        auth.setAuthenticated(player, false);
+                    } catch (DataAccessException e) {
+                        plugin.getLogger().log(Level.SEVERE, "[kAuth] cikis DB hatası", e);
+                        auth.removePlayer(player.getUniqueId());
+                        auth.clearSession(player.getUniqueId());
+                    }
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (!player.isOnline()) return;
+                        player.sendMessage(config.msgComponent("logout.success"));
+                        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                            if (player.isOnline()) plugin.getJoinListener().beginAuthFlow(player);
+                        }, 5L);
+                    });
+                });
             }
             case "ac", "open" -> {
                 if (!(sender instanceof Player player)) { sender.sendMessage(config.msgComponent("admin.player-only")); return true; }
@@ -59,34 +71,90 @@ public class KAuthCommand implements TabExecutor {
             case "kayitsil", "unregister" -> {
                 if (!sender.hasPermission("kauth.admin")) { sender.sendMessage(config.msgComponent("admin.no-permission")); return true; }
                 if (args.length < 2) { sender.sendMessage(config.msgComponent("admin.usage-unregister")); return true; }
-                if (auth.deleteUser(args[1])) {
-                    sender.sendMessage(config.parse(config.msg("admin.unregister-success").replace("%player%", args[1])));
-                    Player target = Bukkit.getPlayerExact(args[1]);
-                    if (target != null && target.isOnline()) {
-                        auth.removePlayer(target.getUniqueId());
-                        auth.sendForceLogout(target);
-                        com.kauth.KAuth kauth = (com.kauth.KAuth) Bukkit.getPluginManager().getPlugin("kAuth");
-                        if (kauth != null) kauth.getJoinListener().beginAuthFlow(target);
+                final String targetName = args[1];
+                plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean deleted;
+                    try {
+                        deleted = auth.deleteUser(targetName);
+                    } catch (DataAccessException e) {
+                        plugin.getLogger().log(Level.SEVERE, "[kAuth] kayitsil DB hatası", e);
+                        plugin.getServer().getScheduler().runTask(plugin, () ->
+                                sender.sendMessage(config.parse("<color:#FF6B6B>Veritabanı hatası!</color>")));
+                        return;
                     }
-                } else {
-                    sender.sendMessage(config.parse(config.msg("admin.unregister-fail").replace("%player%", args[1])));
-                }
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (deleted) {
+                            sender.sendMessage(config.parse(config.msg("admin.unregister-success").replace("%player%", targetName)));
+                            auth.clearSession(targetName);
+                            Player target = Bukkit.getPlayerExact(targetName);
+                            if (target != null && target.isOnline()) {
+                                auth.removePlayer(target.getUniqueId());
+                                auth.clearSession(target.getUniqueId());
+                                auth.sendForceLogout(target);
+                                plugin.getJoinListener().beginAuthFlow(target);
+                            }
+                        } else {
+                            sender.sendMessage(config.parse(config.msg("admin.unregister-fail").replace("%player%", targetName)));
+                        }
+                    });
+                });
             }
             case "sifredegistir", "changepassword" -> {
                 if (!sender.hasPermission("kauth.admin")) { sender.sendMessage(config.msgComponent("admin.no-permission")); return true; }
                 if (args.length < 3) { sender.sendMessage(config.msgComponent("admin.usage-changepassword")); return true; }
-                if (auth.changePassword(args[1], args[2])) {
-                    sender.sendMessage(config.parse(config.msg("admin.changepassword-success").replace("%player%", args[1])));
-                    Player target = Bukkit.getPlayerExact(args[1]);
-                    if (target != null && target.isOnline()) {
-                        auth.setAuthenticated(target, false);
-                        auth.sendForceLogout(target);
-                        com.kauth.KAuth kauth = (com.kauth.KAuth) Bukkit.getPluginManager().getPlugin("kAuth");
-                        if (kauth != null) kauth.getJoinListener().beginAuthFlow(target);
+                final String targetName = args[1];
+                final String newPassword = args[2];
+
+                AuthService.PasswordValidationResult pv = auth.validatePassword(targetName, newPassword);
+                switch (pv) {
+                    case TOO_SHORT -> {
+                        String msg = config.msg("register.too_short").replace("%min%", String.valueOf(auth.getMinPasswordLength()));
+                        sender.sendMessage(config.parse(msg));
+                        return true;
                     }
-                } else {
-                    sender.sendMessage(config.parse(config.msg("admin.changepassword-fail").replace("%player%", args[1])));
+                    case TOO_LONG -> {
+                        String msg = config.msg("register.too_long").replace("%max%", String.valueOf(auth.getMaxPasswordLength()));
+                        sender.sendMessage(config.parse(msg));
+                        return true;
+                    }
+                    case WEAK -> {
+                        sender.sendMessage(config.msgComponent("register.invalid"));
+                        return true;
+                    }
+                    case OK -> {}
                 }
+
+                plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean changed;
+                    try {
+                        changed = auth.changePassword(targetName, newPassword);
+                    } catch (DataAccessException e) {
+                        plugin.getLogger().log(Level.SEVERE, "[kAuth] sifredegistir DB hatası", e);
+                        plugin.getServer().getScheduler().runTask(plugin, () ->
+                                sender.sendMessage(config.parse("<color:#FF6B6B>Veritabanı hatası!</color>")));
+                        return;
+                    }
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (changed) {
+                            sender.sendMessage(config.parse(config.msg("admin.changepassword-success").replace("%player%", targetName)));
+                            auth.clearSession(targetName);
+                            Player target = Bukkit.getPlayerExact(targetName);
+                            if (target != null && target.isOnline()) {
+                                plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                                    try { auth.setAuthenticated(target, false); }
+                                    catch (DataAccessException ignored) { auth.removePlayer(target.getUniqueId()); }
+                                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                        auth.clearSession(target.getUniqueId());
+                                        auth.sendForceLogout(target);
+                                        plugin.getJoinListener().beginAuthFlow(target);
+                                    });
+                                });
+                            }
+                        } else {
+                            sender.sendMessage(config.parse(config.msg("admin.changepassword-fail").replace("%player%", targetName)));
+                        }
+                    });
+                });
             }
             default -> sendUsage(sender);
         }

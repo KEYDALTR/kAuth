@@ -2,6 +2,7 @@ package com.kauth.command;
 
 import com.kauth.KAuth;
 import com.kauth.auth.AuthService;
+import com.kauth.common.storage.DataAccessException;
 import com.kauth.config.ConfigManager;
 import com.kauth.util.EffectUtil;
 import org.bukkit.command.Command;
@@ -9,6 +10,8 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffectType;
+
+import java.util.logging.Level;
 
 public class LoginCommand implements CommandExecutor {
 
@@ -40,18 +43,32 @@ public class LoginCommand implements CommandExecutor {
         }
 
         final String password = args[0];
-        // Async: DB + PBKDF2
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            boolean registered = auth.isRegistered(player.getName());
-            boolean valid = registered && auth.checkPassword(player.getName(), password);
+            Boolean valid;
+            boolean registered;
+            try {
+                registered = auth.isRegistered(player.getName());
+                valid = registered && auth.checkPassword(player.getName(), password);
+            } catch (DataAccessException e) {
+                plugin.getLogger().log(Level.SEVERE, "[kAuth] Login DB hatası", e);
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(config.parse(
+                                "<color:#FF6B6B>Veritabanı hatası, lütfen tekrar deneyiniz.</color>"));
+                    }
+                });
+                return;
+            }
 
+            final boolean isRegistered = registered;
+            final boolean isValid = valid;
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
-                if (!registered) {
+                if (!isRegistered) {
                     player.sendMessage(config.msgComponent("login.need_register"));
                     return;
                 }
-                if (valid) {
+                if (isValid) {
                     auth.forceLogin(player);
                     player.removePotionEffect(PotionEffectType.BLINDNESS);
                     try { player.closeDialog(); } catch (Exception ignored) {}
@@ -63,7 +80,8 @@ public class LoginCommand implements CommandExecutor {
                     int attempts = auth.incrementAttempts(player);
                     int max = auth.getMaxAttempts();
                     if (max > 0 && attempts >= max) {
-                        String msg = plugin.getConfig().getString("auth.max-attempts-kick-message", "<red>Çok fazla yanlış deneme!</red>");
+                        String msg = plugin.getConfig().getString("auth.max-attempts-kick-message",
+                                "<red>Çok fazla yanlış deneme!</red>");
                         logAction("kick-attempts", player);
                         player.kick(config.parse(msg));
                         return;
@@ -81,8 +99,10 @@ public class LoginCommand implements CommandExecutor {
         String format = plugin.getConfig().getString("logging." + action, "");
         if (format.isEmpty()) return;
         String ip = player.getAddress() != null ? player.getAddress().getAddress().getHostAddress() : "unknown";
-        format = format.replace("%player%", player.getName()).replace("%ip%", ip)
-                .replace("%attempts%", String.valueOf(auth.getMaxAttempts() - auth.getRemainingAttempts(player)));
+        int attempts = auth.getUsedAttempts(player);
+        format = format.replace("%player%", player.getName())
+                       .replace("%ip%", ip)
+                       .replace("%attempts%", String.valueOf(attempts));
         plugin.getLogger().info(format);
     }
 }

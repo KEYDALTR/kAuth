@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -20,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Plugin(
         id = "kauth",
         name = "kAuth",
-        version = "1.0.3",
+        version = "1.0.4",
         description = "kAuth - Velocity Senkronizasyon",
         authors = {"Egemen KEYDAL"}
 )
@@ -31,6 +32,7 @@ public class KAuthVelocity {
     private final Path dataDirectory;
     private final Set<UUID> authenticatedPlayers = ConcurrentHashMap.newKeySet();
     private final Set<String> ignoredServers = new HashSet<>();
+    private volatile byte[] secret = new byte[0];
 
     public static final MinecraftChannelIdentifier CHANNEL =
             MinecraftChannelIdentifier.from(MessageConstants.CHANNEL);
@@ -51,7 +53,7 @@ public class KAuthVelocity {
         server.getEventManager().register(this, new VelocityConnectionListener(this));
 
         logger.info("============================kAuth============================");
-        logger.info("kAuth Velocity Senkronizasyon v1.0.3");
+        logger.info("kAuth Velocity Senkronizasyon v1.0.4");
         logger.info("Kanal: " + MessageConstants.CHANNEL);
         if (!ignoredServers.isEmpty()) {
             logger.info("Yoksayılan sunucular (limbo/filtre): " + String.join(", ", ignoredServers));
@@ -68,10 +70,24 @@ public class KAuthVelocity {
 
             Path configFile = dataDirectory.resolve("config.properties");
             if (!Files.exists(configFile)) {
+                // Otomatik rastgele secret üret
+                String generatedSecret = generateSecret();
                 // Varsayılan config oluştur
                 String defaultConfig = """
                         # kAuth Velocity Konfigürasyonu
                         #
+                        # GÜVENLİK KRİTİK: velocity.secret
+                        # Bu secret Paper backend sunucularının config.yml dosyasındaki
+                        # velocity.secret ile AYNI olmalıdır.
+                        #
+                        # Secret, auth sync mesajlarının HMAC-SHA256 imzalanması için
+                        # kullanılır. Bu sayede kötü niyetli oyuncular plugin messaging
+                        # channel'ına sahte login mesajı gönderip auth bypass yapamazlar.
+                        #
+                        # Aşağıdaki secret rastgele üretildi. Paper backend'lere de aynı
+                        # değeri kopyalayın!
+                        secret=%SECRET%
+
                         # Yoksayılacak sunucular (limbo, filtre, auth sunucuları)
                         # LimboFilter veya benzeri plugin kullanıyorsanız
                         # limbo sunucularının adlarını virgülle ayırarak yazın.
@@ -79,15 +95,29 @@ public class KAuthVelocity {
                         #
                         # Örnek: limbo,filter,auth
                         ignored-servers=limbo,filter
-                        """;
+                        """.replace("%SECRET%", generatedSecret);
                 Files.writeString(configFile, defaultConfig);
+                logger.info("============================================================");
                 logger.info("Varsayılan config oluşturuldu: " + configFile);
+                logger.info("GÜVENLİK: Aşağıdaki secret'ı Paper backend'lerin config.yml");
+                logger.info("dosyasına velocity.secret olarak YAPIŞTIRIN:");
+                logger.info("  " + generatedSecret);
+                logger.info("============================================================");
             }
 
             // Config oku
             Properties props = new Properties();
             try (InputStream is = Files.newInputStream(configFile)) {
                 props.load(is);
+            }
+
+            String secretStr = props.getProperty("secret", "");
+            if (secretStr.isEmpty()) {
+                logger.error("[GÜVENLİK] velocity.secret BOŞ! Auth sync GÜVENSİZ çalışmayacak.");
+                logger.error("[GÜVENLİK] plugins/kauth/config.properties içinde secret ayarlayın.");
+                secret = new byte[0];
+            } else {
+                secret = secretStr.getBytes(StandardCharsets.UTF_8);
             }
 
             String ignored = props.getProperty("ignored-servers", "limbo,filter");
@@ -100,16 +130,26 @@ public class KAuthVelocity {
             }
 
         } catch (IOException e) {
-            logger.warn("Config yüklenemedi, varsayılan değerler kullanılıyor: " + e.getMessage());
+            logger.error("[GÜVENLİK] Config yüklenemedi: " + e.getMessage());
+            logger.error("[GÜVENLİK] Secret olmadan plugin GÜVENSİZ çalışır - Velocity sync DEVRE DIŞI");
+            secret = new byte[0];
             ignoredServers.add("limbo");
             ignoredServers.add("filter");
         }
     }
 
-    /**
-     * Belirtilen sunucu adı limbo/filtre sunucusu mu?
-     * LimboFilter uyumluluğu için bu sunuculara mesaj gönderilmez.
-     */
+    private String generateSecret() {
+        byte[] bytes = new byte[32];
+        new java.security.SecureRandom().nextBytes(bytes);
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
+
+    public byte[] getSecret() {
+        return secret;
+    }
+
     public boolean isIgnoredServer(String serverName) {
         return ignoredServers.contains(serverName.toLowerCase());
     }

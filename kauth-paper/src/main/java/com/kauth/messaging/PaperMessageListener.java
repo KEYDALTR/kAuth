@@ -4,6 +4,7 @@ import com.kauth.KAuth;
 import com.kauth.auth.AuthService;
 import com.kauth.common.messaging.AuthMessage;
 import com.kauth.common.messaging.MessageConstants;
+import com.kauth.config.Settings;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.messaging.PluginMessageListener;
@@ -23,8 +24,29 @@ public class PaperMessageListener implements PluginMessageListener {
     public void onPluginMessageReceived(String channel, Player carrier, byte[] message) {
         if (!channel.equals(MessageConstants.CHANNEL)) return;
 
-        AuthMessage msg = AuthMessage.fromBytes(message);
-        UUID uuid = UUID.fromString(msg.playerUuid());
+        Settings.Velocity v = plugin.getConfigManager().getSettings().get().velocity();
+        if (!v.enabled()) return;
+        if (!v.hasSecret()) {
+            plugin.getLogger().warning("[Güvenlik] Plugin mesajı alındı ama velocity.secret ayarlı değil, reddediliyor");
+            return;
+        }
+
+        final AuthMessage msg;
+        try {
+            msg = AuthMessage.fromBytes(message, v.secret());
+        } catch (AuthMessage.MessageVerificationException e) {
+            plugin.getLogger().warning("[Güvenlik] Geçersiz plugin mesajı (" + carrier.getName()
+                    + "): " + e.getMessage());
+            return;
+        }
+
+        final UUID uuid;
+        try {
+            uuid = UUID.fromString(msg.playerUuid());
+        } catch (IllegalArgumentException e) {
+            plugin.getLogger().warning("[Güvenlik] Geçersiz UUID mesajda: " + msg.playerUuid());
+            return;
+        }
 
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Player target = Bukkit.getPlayer(uuid);
@@ -44,14 +66,17 @@ public class PaperMessageListener implements PluginMessageListener {
                 case MessageConstants.LOGOUT -> {
                     if (auth.isAuthenticated(target)) {
                         auth.removePlayer(uuid);
+                        plugin.getJoinListener().beginAuthFlow(target);
                         plugin.getLogger().info("[Velocity] " + msg.playerName() + " uzaktan çıkış yaptı.");
                     }
                 }
                 case MessageConstants.FORCE_LOGOUT -> {
                     auth.removePlayer(uuid);
-                    plugin.getDialogProvider().showLogin(target);
+                    auth.clearSession(uuid);
+                    plugin.getJoinListener().beginAuthFlow(target);
                     plugin.getLogger().info("[Velocity] " + msg.playerName() + " zorla çıkış yapıldı.");
                 }
+                default -> plugin.getLogger().warning("[Velocity] Bilinmeyen mesaj tipi: " + msg.type());
             }
         });
     }

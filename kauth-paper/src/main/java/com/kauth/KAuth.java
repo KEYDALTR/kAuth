@@ -35,7 +35,6 @@ public final class KAuth extends JavaPlugin {
 
         configManager = new ConfigManager(this);
 
-        // Veritabanı seçimi
         String dbType = getConfig().getString("database.type", "sqlite");
         if ("mysql".equalsIgnoreCase(dbType)) {
             database = new MySQLDatabase(
@@ -55,14 +54,12 @@ public final class KAuth extends JavaPlugin {
         }
         database.initialize();
 
-        // E-posta servisi
         emailService = new EmailService(this);
         verificationManager = new VerificationManager(this);
 
         authService = new AuthService(this, database);
         dialogProvider = new DialogProvider(this, configManager);
 
-        // Velocity messaging
         if (getConfig().getBoolean("velocity.enabled", false)) {
             messagingHelper = new MessagingHelper(this);
             getServer().getMessenger().registerOutgoingPluginChannel(this, MessageConstants.CHANNEL);
@@ -70,19 +67,16 @@ public final class KAuth extends JavaPlugin {
                     new PaperMessageListener(this));
         }
 
-        // Listener'lar
         var pluginManager = getServer().getPluginManager();
         joinListener = new JoinListener(this, authService, configManager, dialogProvider);
         pluginManager.registerEvents(joinListener, this);
-        pluginManager.registerEvents(new PlayerProtectionListener(this, authService, configManager.getSettings()), this);
+        pluginManager.registerEvents(new PlayerProtectionListener(this, authService, configManager), this);
 
-        // Auth success → countdown/title/bossbar temizle
         authService.registerAuthSuccessHandler(joinListener::onAuthSuccess);
 
-        // Komutlar
         var kauthCmd = getCommand("kauth");
         if (kauthCmd != null) {
-            var cmd = new KAuthCommand(configManager, authService, dialogProvider);
+            var cmd = new KAuthCommand(this, configManager, authService, dialogProvider);
             kauthCmd.setExecutor(cmd);
             kauthCmd.setTabCompleter(cmd);
         }
@@ -106,7 +100,7 @@ public final class KAuth extends JavaPlugin {
         if (dogrulaCmd != null) dogrulaCmd.setExecutor(new VerifyCommand(this, authService, configManager, verificationManager, dialogProvider));
 
         getLogger().info("============================kAuth============================");
-        getLogger().info("KEYDAL Network - Giriş Sistemi v1.0.3");
+        getLogger().info("KEYDAL Network - Giriş Sistemi v1.0.4");
         getLogger().info("Mod: " + (dialogProvider.isDialogAvailable() ? "Dialog GUI" : "Chat Tabanlı"));
         getLogger().info("Veritabanı: " + dbType.toUpperCase());
         getLogger().info("E-posta: " + (emailService.isEnabled() ? "Aktif (" + getConfig().getString("email.smtp.host", "") + ")" : "Devre dışı"));
@@ -118,6 +112,8 @@ public final class KAuth extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (joinListener != null) joinListener.shutdownAllSessions();
+        if (emailService != null) emailService.shutdown();
         if (database != null) database.close();
         if (messagingHelper != null) {
             getServer().getMessenger().unregisterOutgoingPluginChannel(this, MessageConstants.CHANNEL);

@@ -18,9 +18,6 @@ public class VelocityConnectionListener {
         this.plugin = plugin;
     }
 
-    /**
-     * Oyuncu tamamen proxy'den ayrıldığında tüm backend'lere LOGOUT gönder.
-     */
     @Subscribe
     public void onDisconnect(DisconnectEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
@@ -28,21 +25,14 @@ public class VelocityConnectionListener {
 
         if (plugin.isAuthenticated(uuid)) {
             plugin.setAuthenticated(uuid, false);
+            byte[] secret = plugin.getSecret();
+            if (secret.length == 0) return;
             AuthMessage msg = new AuthMessage(MessageConstants.LOGOUT, uuid.toString(), name);
-            broadcastToAll(msg.toBytes());
+            broadcastToAll(msg.toBytes(secret));
             plugin.getLogger().info("[Disconnect] " + name + " proxy'den ayrıldı → tüm sunuculara LOGOUT gönderildi");
         }
     }
 
-    /**
-     * Oyuncu sunucu değiştirdiğinde, eğer authenticate ise yeni sunucuya LOGIN gönder.
-     *
-     * LimboFilter uyumluluğu:
-     * - Limbo/filtre sunucularına LOGIN gönderilmez
-     * - previousServer yoksa (ilk bağlantı) → oyuncu LimboFilter'dan geliyor olabilir,
-     *   sadece authenticate ise gönder
-     * - previousServer limbo ise → LimboFilter'ı geçti, backend'e düşüyor
-     */
     @Subscribe
     public void onServerConnected(ServerConnectedEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
@@ -50,7 +40,6 @@ public class VelocityConnectionListener {
         RegisteredServer newServer = event.getServer();
         String newServerName = newServer.getServerInfo().getName().toLowerCase();
 
-        // Limbo/filtre sunucularına mesaj gönderme
         if (plugin.isIgnoredServer(newServerName)) {
             plugin.getLogger().info("[ServerSwitch] " + name + " → " + newServerName + " (limbo/filtre, atlandı)");
             return;
@@ -60,15 +49,15 @@ public class VelocityConnectionListener {
             return;
         }
 
-        AuthMessage msg = new AuthMessage(MessageConstants.LOGIN, uuid.toString(), name);
+        byte[] secret = plugin.getSecret();
+        if (secret.length == 0) return;
 
-        // Gecikme ile gönder - kanal hazırlığı ve LimboFilter sonrası stabilite için
         plugin.getServer().getScheduler()
                 .buildTask(plugin, () -> {
-                    // Oyuncu hala aynı sunucuda ve online mı kontrol et
                     event.getPlayer().getCurrentServer().ifPresent(currentServer -> {
                         if (currentServer.getServerInfo().getName().equals(newServer.getServerInfo().getName())) {
-                            newServer.sendPluginMessage(KAuthVelocity.CHANNEL, msg.toBytes());
+                            AuthMessage msg = new AuthMessage(MessageConstants.LOGIN, uuid.toString(), name);
+                            newServer.sendPluginMessage(KAuthVelocity.CHANNEL, msg.toBytes(secret));
                             plugin.getLogger().info("[ServerSwitch] " + name + " → " + newServer.getServerInfo().getName() + " (LOGIN gönderildi)");
                         }
                     });
@@ -80,7 +69,6 @@ public class VelocityConnectionListener {
     private void broadcastToAll(byte[] data) {
         for (RegisteredServer server : plugin.getServer().getAllServers()) {
             String serverName = server.getServerInfo().getName().toLowerCase();
-            // Limbo sunucularına broadcast gönderme
             if (plugin.isIgnoredServer(serverName)) continue;
             if (!server.getPlayersConnected().isEmpty()) {
                 server.sendPluginMessage(KAuthVelocity.CHANNEL, data);
