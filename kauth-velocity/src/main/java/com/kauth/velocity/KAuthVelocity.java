@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Plugin(
         id = "kauth",
         name = "kAuth",
-        version = "1.0.2",
+        version = "1.0.3",
         description = "kAuth - Velocity Senkronizasyon",
         authors = {"Egemen KEYDAL"}
 )
@@ -51,7 +51,7 @@ public class KAuthVelocity {
         server.getEventManager().register(this, new VelocityConnectionListener(this));
 
         logger.info("============================kAuth============================");
-        logger.info("kAuth Velocity Senkronizasyon v1.0.2");
+        logger.info("kAuth Velocity Senkronizasyon v1.0.3");
         logger.info("Kanal: " + MessageConstants.CHANNEL);
         if (!ignoredServers.isEmpty()) {
             logger.info("Yoksayılan sunucular (limbo/filtre): " + String.join(", ", ignoredServers));

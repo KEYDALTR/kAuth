@@ -27,30 +27,39 @@ public class ChangePasswordCommand implements CommandExecutor {
             return true;
         }
 
-        if (!auth.isRegistered(player.getName())) {
-            player.sendMessage(config.msgComponent("changepassword-self.not-registered"));
-            return true;
-        }
-
         if (args.length < 2) {
             player.sendMessage(config.msgComponent("changepassword-self.usage"));
             return true;
         }
 
-        String oldPassword = args[0];
-        String newPassword = args[1];
+        final String oldPassword = args[0];
+        final String newPassword = args[1];
 
-        if (!auth.checkPassword(player.getName(), oldPassword)) {
-            player.sendMessage(config.msgComponent("changepassword-self.wrong-old"));
-            return true;
-        }
+        // Async: DB + PBKDF2
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (!auth.isRegistered(player.getName())) {
+                plugin.getServer().getScheduler().runTask(plugin, () ->
+                        player.sendMessage(config.msgComponent("changepassword-self.not-registered")));
+                return;
+            }
 
-        if (auth.changePassword(player.getName(), newPassword)) {
-            player.sendMessage(config.msgComponent("changepassword-self.success"));
-            plugin.getLogger().info("[kAuth] " + player.getName() + " şifresini değiştirdi.");
-        } else {
-            player.sendMessage(config.msgComponent("register.failed"));
-        }
+            if (!auth.checkPassword(player.getName(), oldPassword)) {
+                plugin.getServer().getScheduler().runTask(plugin, () ->
+                        player.sendMessage(config.msgComponent("changepassword-self.wrong-old")));
+                return;
+            }
+
+            boolean success = auth.changePassword(player.getName(), newPassword);
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (success) {
+                    player.sendMessage(config.msgComponent("changepassword-self.success"));
+                    plugin.getLogger().info("[kAuth] " + player.getName() + " şifresini değiştirdi.");
+                } else {
+                    player.sendMessage(config.msgComponent("register.failed"));
+                }
+            });
+        });
         return true;
     }
 }

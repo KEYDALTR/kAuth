@@ -1,6 +1,6 @@
 ##########################################################################
 #
-#   kAuth v1.0.2 - Giriş & Kayıt Dialog Sistemi
+#   kAuth v1.0.3 - Giriş & Kayıt Dialog Sistemi
 #   KEYDAL Network
 #   Geliştirici: Egemen KEYDAL
 #
@@ -70,10 +70,15 @@ logging:
 auth:
   min-password-length: 4
   max-password-length: 30
+  # Kayıt sırasında şifre tekrarı alanı istensin mi?
+  # true = /kayit <şifre> <tekrar>  (2 kez şifre)
+  # false = /kayit <şifre>           (tek şifre)
+  require-password-confirmation: true
   # Giriş yapma süresi (saniye) - süre dolunca oyuncu atılır (0 = devre dışı)
   login-timeout: 60
   # Maksimum yanlış şifre denemesi (0 = sınırsız)
-  max-login-attempts: 5
+  # Bu sayıyı aşan oyuncu sunucudan atılır
+  max-login-attempts: 3
   # Oturum sistemi - aynı IP ile tekrar girişte şifre sorma (dakika, 0 = devre dışı)
   session-timeout: 30
   # Giriş yapmadan önce oyuncuya körlük efekti ver
@@ -103,10 +108,16 @@ auth:
     - "/rp"
   # Zayıf şifreleri engelle (123456, qwerty, oyuncu adı vs.)
   block-weak-passwords: true
-  # IP bazlı brute-force koruması - bu kadar denemeden sonra IP engellenir
+  # IP bazlı brute-force koruması - bu kadar başarısız denemeden sonra IP engellenir
+  # 0 = devre dışı
   max-ip-attempts: 20
   # IP engellenme süresi (dakika)
   ip-block-minutes: 10
+  # IP engellenmişse oyuncu sunucuya hiç bağlanamasın (prelogin aşamasında kick)
+  # false = sadece login denemesinde kick
+  ip-ban-on-prelogin: true
+  # IP engeli kick mesajı (%time% = kalan saniye)
+  ip-block-kick-message: "<color:#FF6B6B>⛔ IP adresiniz geçici olarak engellendi!</color><newline><color:#B0C4D4>Kalan süre: <color:#FFD93D>%time%</color> saniye</color><newline><color:#8FA8B8>Çok fazla yanlış şifre girdiniz.</color>"
   # Aynı IP'den maksimum hesap sayısı (0 = sınırsız)
   max-accounts-per-ip: 3
   # Son giriş bilgisini göster (IP ve zaman)
@@ -183,9 +194,10 @@ effects:
   # === Giriş yapmadan önce (bekleme ekranı) ===
   waiting:
     # Actionbar mesajı (sürekli gösterilir)
+    # %time% = kalan süre (saniye) - login-timeout kullanılır
     actionbar:
       enabled: true
-      message: "<color:#FF6B6B>⚠</color> <color:#B0C4D4>Lütfen giriş yapınız veya kayıt olunuz!</color> <color:#FF6B6B>⚠</color>"
+      message: "<color:#FF6B6B>⚠</color> <color:#B0C4D4>Lütfen giriş yapınız! Kalan süre:</color> <color:#FF6B6B>%time%</color> <color:#B0C4D4>sn</color> <color:#FF6B6B>⚠</color>"
       update-ticks: 20
     # Title (girişte bir kere gösterilir)
     title:
@@ -195,6 +207,32 @@ effects:
       fade-in: 10
       stay: 60
       fade-out: 20
+    # Bossbar (kalan süre gösterimi)
+    # NOT: Dialog açıkken bossbar HUD'un üstünde görünmez (client kısıtlaması)
+    # Dialog mode için title-countdown kullanın
+    # %time% = kalan saniye
+    bossbar:
+      enabled: true
+      title: "<color:#FF6B6B>⏱ Giriş için kalan süre: </color><color:#FFD93D>%time%</color><color:#FF6B6B> saniye</color>"
+      # Renkler: PINK, BLUE, RED, GREEN, YELLOW, PURPLE, WHITE
+      color: "RED"
+      # Stiller: PROGRESS, NOTCHED_6, NOTCHED_10, NOTCHED_12, NOTCHED_20
+      overlay: "NOTCHED_20"
+    # Title/subtitle countdown - Dialog açıkken de görünür (önerilen)
+    # Her saniye yenilenir, kesintisiz countdown
+    # %time% = kalan saniye
+    title-countdown:
+      enabled: true
+      title: "<color:#FF6B6B>⏱ </color><color:#FFD93D>%time%</color><color:#FF6B6B> sn</color>"
+      subtitle: "<color:#B0C4D4>Lütfen giriş yapınız</color>"
+    # Arka plan ses döngüsü (oyuncu sıkılmasın diye)
+    sound-loop:
+      enabled: true
+      type: "BLOCK_NOTE_BLOCK_HAT"
+      volume: 0.5
+      pitch: 1.0
+      # Ses çalma aralığı (tick cinsinden, 20 tick = 1 saniye)
+      interval-ticks: 40
 
   # === Başarılı giriş sonrası ===
   login-success:

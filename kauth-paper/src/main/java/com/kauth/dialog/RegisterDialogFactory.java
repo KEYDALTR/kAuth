@@ -53,10 +53,14 @@ public class RegisterDialogFactory {
                 "password",
                 mm.deserialize(config.msg("register.button_password"))
         ).build());
-        inputs.add(DialogInput.text(
-                "confirm_password",
-                mm.deserialize(config.msg("register.confirm_password"))
-        ).build());
+        // Şifre tekrarı alanı aç/kapa
+        boolean requireConfirm = plugin.getConfig().getBoolean("auth.require-password-confirmation", true);
+        if (requireConfirm) {
+            inputs.add(DialogInput.text(
+                    "confirm_password",
+                    mm.deserialize(config.msg("register.confirm_password"))
+            ).build());
+        }
 
         if (config.emailInputEnabled()) {
             inputs.add(DialogInput.text(

@@ -39,31 +39,40 @@ public class LoginCommand implements CommandExecutor {
             return true;
         }
 
-        if (!auth.isRegistered(player.getName())) {
-            player.sendMessage(config.msgComponent("login.need_register"));
-            return true;
-        }
+        final String password = args[0];
+        // Async: DB + PBKDF2
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean registered = auth.isRegistered(player.getName());
+            boolean valid = registered && auth.checkPassword(player.getName(), password);
 
-        if (auth.checkPassword(player.getName(), args[0])) {
-            auth.forceLogin(player);
-            player.removePotionEffect(PotionEffectType.BLINDNESS);
-            try { player.closeDialog(); } catch (Exception ignored) {}
-            player.sendMessage(config.msgComponent("chat-login.success"));
-            EffectUtil.playEffect(plugin, player, "login-success");
-            logAction("login", player);
-        } else {
-            EffectUtil.playEffect(plugin, player, "login-fail");
-            int attempts = auth.incrementAttempts(player);
-            int max = auth.getMaxAttempts();
-            if (max > 0 && attempts >= max) {
-                String msg = plugin.getConfig().getString("auth.max-attempts-kick-message", "<red>Çok fazla yanlış deneme!</red>");
-                logAction("kick-attempts", player);
-                player.kick(config.parse(msg));
-                return true;
-            }
-            player.sendMessage(config.msgComponent("login.wrong_password"));
-            logAction("failed-login", player);
-        }
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (!registered) {
+                    player.sendMessage(config.msgComponent("login.need_register"));
+                    return;
+                }
+                if (valid) {
+                    auth.forceLogin(player);
+                    player.removePotionEffect(PotionEffectType.BLINDNESS);
+                    try { player.closeDialog(); } catch (Exception ignored) {}
+                    player.sendMessage(config.msgComponent("chat-login.success"));
+                    EffectUtil.playEffect(plugin, player, "login-success");
+                    logAction("login", player);
+                } else {
+                    EffectUtil.playEffect(plugin, player, "login-fail");
+                    int attempts = auth.incrementAttempts(player);
+                    int max = auth.getMaxAttempts();
+                    if (max > 0 && attempts >= max) {
+                        String msg = plugin.getConfig().getString("auth.max-attempts-kick-message", "<red>Çok fazla yanlış deneme!</red>");
+                        logAction("kick-attempts", player);
+                        player.kick(config.parse(msg));
+                        return;
+                    }
+                    player.sendMessage(config.msgComponent("login.wrong_password"));
+                    logAction("failed-login", player);
+                }
+            });
+        });
         return true;
     }
 

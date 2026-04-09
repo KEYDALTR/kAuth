@@ -37,48 +37,76 @@ public class RegisterCommand implements CommandExecutor {
             return true;
         }
 
-        if (args.length < 2) {
-            player.sendMessage(config.msgComponent("chat-register.usage"));
-            return true;
+        // Şifre tekrarı aç/kapa
+        boolean requireConfirm = plugin.getConfig().getBoolean("auth.require-password-confirmation", true);
+
+        String password;
+        String confirm;
+        String email;
+
+        if (requireConfirm) {
+            // /kayit <şifre> <tekrar> [email]
+            if (args.length < 2) {
+                player.sendMessage(config.msgComponent("chat-register.usage"));
+                return true;
+            }
+            password = args[0];
+            confirm = args[1];
+            email = args.length >= 3 ? args[2] : null;
+        } else {
+            // /kayit <şifre> [email]
+            if (args.length < 1) {
+                player.sendMessage(config.msgComponent("chat-register.usage"));
+                return true;
+            }
+            password = args[0];
+            confirm = args[0]; // tek şifre modu
+            email = args.length >= 2 ? args[1] : null;
         }
 
-        // E-posta desteği: /kayit <şifre> <tekrar> [email]
-        String email = args.length >= 3 ? args[2] : null;
+        final String fPassword = password;
+        final String fConfirm = confirm;
+        final String fEmail = email;
+        // Async: PBKDF2 + DB
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            AuthService.RegisterResult result = auth.register(player, fPassword, fConfirm, fEmail);
 
-        AuthService.RegisterResult result = auth.register(player, args[0], args[1], email);
-
-        switch (result) {
-            case SUCCESS -> {
-                player.removePotionEffect(PotionEffectType.BLINDNESS);
-                try { player.closeDialog(); } catch (Exception ignored) {}
-                player.sendMessage(config.msgComponent("chat-register.success"));
-                EffectUtil.playEffect(plugin, player, "register-success");
-                logAction("register", player);
-            }
-            case PENDING_EMAIL_VERIFICATION -> {
-                VerificationManager vm = plugin.getVerificationManager();
-                EmailService es = plugin.getEmailService();
-                String code = vm.generateVerificationCode(player.getUniqueId(), email);
-                es.sendVerificationCode(email, code);
-                String maskedEmail = VerificationDialogFactory.maskEmail(email);
-                player.sendMessage(config.parse(
-                        "<color:#4AEAFF>Doğrulama kodu " + maskedEmail + " adresine gönderildi.</color>"));
-                player.sendMessage(config.parse(
-                        "<color:#B0C4D4>Kodu girmek için: <color:#4AEAFF><bold>/dogrula <kod></bold></color></color>"));
-            }
-            case PASSWORD_MISMATCH -> player.sendMessage(config.msgComponent("register.mismatch"));
-            case PASSWORD_TOO_SHORT -> {
-                String msg = config.msg("register.too_short").replace("%min%", String.valueOf(auth.getMinPasswordLength()));
-                player.sendMessage(config.parse(msg));
-            }
-            case PASSWORD_TOO_LONG -> {
-                String msg = config.msg("register.too_long").replace("%max%", String.valueOf(auth.getMaxPasswordLength()));
-                player.sendMessage(config.parse(msg));
-            }
-            case EMAIL_INVALID -> player.sendMessage(config.msgComponent("register.email_invalid"));
-            case EMAIL_ALREADY_USED -> player.sendMessage(config.msgComponent("register.email_already_used"));
-            default -> player.sendMessage(config.msgComponent("register.failed"));
-        }
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                switch (result) {
+                    case SUCCESS -> {
+                        player.removePotionEffect(PotionEffectType.BLINDNESS);
+                        try { player.closeDialog(); } catch (Exception ignored) {}
+                        player.sendMessage(config.msgComponent("chat-register.success"));
+                        EffectUtil.playEffect(plugin, player, "register-success");
+                        logAction("register", player);
+                    }
+                    case PENDING_EMAIL_VERIFICATION -> {
+                        VerificationManager vm = plugin.getVerificationManager();
+                        EmailService es = plugin.getEmailService();
+                        String code = vm.generateVerificationCode(player.getUniqueId(), fEmail);
+                        es.sendVerificationCode(fEmail, code);
+                        String maskedEmail = VerificationDialogFactory.maskEmail(fEmail);
+                        player.sendMessage(config.parse(
+                                "<color:#4AEAFF>Doğrulama kodu " + maskedEmail + " adresine gönderildi.</color>"));
+                        player.sendMessage(config.parse(
+                                "<color:#B0C4D4>Kodu girmek için: <color:#4AEAFF><bold>/dogrula <kod></bold></color></color>"));
+                    }
+                    case PASSWORD_MISMATCH -> player.sendMessage(config.msgComponent("register.mismatch"));
+                    case PASSWORD_TOO_SHORT -> {
+                        String msg = config.msg("register.too_short").replace("%min%", String.valueOf(auth.getMinPasswordLength()));
+                        player.sendMessage(config.parse(msg));
+                    }
+                    case PASSWORD_TOO_LONG -> {
+                        String msg = config.msg("register.too_long").replace("%max%", String.valueOf(auth.getMaxPasswordLength()));
+                        player.sendMessage(config.parse(msg));
+                    }
+                    case EMAIL_INVALID -> player.sendMessage(config.msgComponent("register.email_invalid"));
+                    case EMAIL_ALREADY_USED -> player.sendMessage(config.msgComponent("register.email_already_used"));
+                    default -> player.sendMessage(config.msgComponent("register.failed"));
+                }
+            });
+        });
         return true;
     }
 

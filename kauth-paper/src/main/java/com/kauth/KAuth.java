@@ -27,6 +27,7 @@ public final class KAuth extends JavaPlugin {
     private EmailService emailService;
     private VerificationManager verificationManager;
     private MessagingHelper messagingHelper;
+    private JoinListener joinListener;
 
     @Override
     public void onEnable() {
@@ -71,8 +72,12 @@ public final class KAuth extends JavaPlugin {
 
         // Listener'lar
         var pluginManager = getServer().getPluginManager();
-        pluginManager.registerEvents(new JoinListener(this, authService, configManager, dialogProvider), this);
-        pluginManager.registerEvents(new PlayerProtectionListener(this, authService), this);
+        joinListener = new JoinListener(this, authService, configManager, dialogProvider);
+        pluginManager.registerEvents(joinListener, this);
+        pluginManager.registerEvents(new PlayerProtectionListener(this, authService, configManager.getSettings()), this);
+
+        // Auth success → countdown/title/bossbar temizle
+        authService.registerAuthSuccessHandler(joinListener::onAuthSuccess);
 
         // Komutlar
         var kauthCmd = getCommand("kauth");
@@ -101,7 +106,7 @@ public final class KAuth extends JavaPlugin {
         if (dogrulaCmd != null) dogrulaCmd.setExecutor(new VerifyCommand(this, authService, configManager, verificationManager, dialogProvider));
 
         getLogger().info("============================kAuth============================");
-        getLogger().info("KEYDAL Network - Giriş Sistemi v1.0.2");
+        getLogger().info("KEYDAL Network - Giriş Sistemi v1.0.3");
         getLogger().info("Mod: " + (dialogProvider.isDialogAvailable() ? "Dialog GUI" : "Chat Tabanlı"));
         getLogger().info("Veritabanı: " + dbType.toUpperCase());
         getLogger().info("E-posta: " + (emailService.isEnabled() ? "Aktif (" + getConfig().getString("email.smtp.host", "") + ")" : "Devre dışı"));
@@ -128,4 +133,5 @@ public final class KAuth extends JavaPlugin {
     public EmailService getEmailService() { return emailService; }
     public VerificationManager getVerificationManager() { return verificationManager; }
     public MessagingHelper getMessagingHelper() { return messagingHelper; }
+    public JoinListener getJoinListener() { return joinListener; }
 }

@@ -39,7 +39,13 @@ public class KAuthCommand implements TabExecutor {
                 if (!auth.isAuthenticated(player)) { player.sendMessage(config.msgComponent("logout.not-logged-in")); return true; }
                 auth.setAuthenticated(player, false);
                 player.sendMessage(config.msgComponent("logout.success"));
-                dialogProvider.showLogin(player);
+                // Tam auth flow'u yeniden başlat
+                com.kauth.KAuth kauth = (com.kauth.KAuth) org.bukkit.Bukkit.getPluginManager().getPlugin("kAuth");
+                if (kauth != null) {
+                    org.bukkit.Bukkit.getScheduler().runTaskLater(kauth, () -> {
+                        if (player.isOnline()) kauth.getJoinListener().beginAuthFlow(player);
+                    }, 5L);
+                }
             }
             case "ac", "open" -> {
                 if (!(sender instanceof Player player)) { sender.sendMessage(config.msgComponent("admin.player-only")); return true; }
@@ -55,12 +61,12 @@ public class KAuthCommand implements TabExecutor {
                 if (args.length < 2) { sender.sendMessage(config.msgComponent("admin.usage-unregister")); return true; }
                 if (auth.deleteUser(args[1])) {
                     sender.sendMessage(config.parse(config.msg("admin.unregister-success").replace("%player%", args[1])));
-                    // Online ise FORCE_LOGOUT
                     Player target = Bukkit.getPlayerExact(args[1]);
                     if (target != null && target.isOnline()) {
                         auth.removePlayer(target.getUniqueId());
                         auth.sendForceLogout(target);
-                        dialogProvider.showRegister(target);
+                        com.kauth.KAuth kauth = (com.kauth.KAuth) Bukkit.getPluginManager().getPlugin("kAuth");
+                        if (kauth != null) kauth.getJoinListener().beginAuthFlow(target);
                     }
                 } else {
                     sender.sendMessage(config.parse(config.msg("admin.unregister-fail").replace("%player%", args[1])));
@@ -71,12 +77,12 @@ public class KAuthCommand implements TabExecutor {
                 if (args.length < 3) { sender.sendMessage(config.msgComponent("admin.usage-changepassword")); return true; }
                 if (auth.changePassword(args[1], args[2])) {
                     sender.sendMessage(config.parse(config.msg("admin.changepassword-success").replace("%player%", args[1])));
-                    // Online ise FORCE_LOGOUT
                     Player target = Bukkit.getPlayerExact(args[1]);
                     if (target != null && target.isOnline()) {
                         auth.setAuthenticated(target, false);
                         auth.sendForceLogout(target);
-                        dialogProvider.showLogin(target);
+                        com.kauth.KAuth kauth = (com.kauth.KAuth) Bukkit.getPluginManager().getPlugin("kAuth");
+                        if (kauth != null) kauth.getJoinListener().beginAuthFlow(target);
                     }
                 } else {
                     sender.sendMessage(config.parse(config.msg("admin.changepassword-fail").replace("%player%", args[1])));

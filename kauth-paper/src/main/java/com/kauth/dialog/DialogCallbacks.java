@@ -25,58 +25,68 @@ public final class DialogCallbacks {
                 return;
             }
 
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            // Async: DB okuma + PBKDF2 verify (CPU yoğun)
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
                 AuthService auth = ((KAuth) plugin).getAuthService();
 
-                if (!auth.isRegistered(player.getName())) {
-                    player.sendMessage(config.msgComponent("login.need_register"));
-                    safeCloseDialog(player);
-                    return;
-                }
+                boolean registered = auth.isRegistered(player.getName());
+                boolean ipBlocked = auth.isIpBlocked(player);
+                boolean passwordValid = registered && auth.checkPassword(player.getName(), password);
+                String lastInfo = passwordValid ? auth.getLastLoginInfo(player.getName()) : null;
 
-                if (auth.isIpBlocked(player)) {
-                    player.kick(config.parse("<color:#FF6B6B>IP adresiniz geçici olarak engellendi.</color>"));
-                    return;
-                }
+                // Main thread: Bukkit API çağrıları
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) return;
 
-                if (auth.checkPassword(player.getName(), password)) {
-                    auth.forceLogin(player);
-                    player.removePotionEffect(PotionEffectType.BLINDNESS);
-                    safeCloseDialog(player);
-                    player.sendMessage(config.msgComponent("login.success"));
-
-                    String lastInfo = auth.getLastLoginInfo(player.getName());
-                    if (lastInfo != null) {
-                        player.sendMessage(config.parse("<color:#3A4F6A>Son giriş: " + lastInfo + "</color>"));
-                    }
-
-                    EffectUtil.playEffect(plugin, player, "login-success");
-                    log(plugin, "login", player);
-                } else {
-                    int attempts = auth.incrementAttempts(player);
-                    int maxAttempts = auth.getMaxAttempts();
-                    log(plugin, "failed-login", player);
-
-                    if (maxAttempts > 0 && attempts >= maxAttempts) {
-                        String msg = plugin.getConfig().getString("auth.max-attempts-kick-message",
-                                "<red>Çok fazla yanlış deneme!</red>");
-                        log(plugin, "kick-attempts", player);
-                        player.kick(config.parse(msg));
+                    if (!registered) {
+                        player.sendMessage(config.msgComponent("login.need_register"));
+                        safeCloseDialog(player);
                         return;
                     }
 
-                    EffectUtil.playEffect(plugin, player, "login-fail");
-
-                    int remaining = auth.getRemainingAttempts(player);
-                    if (remaining > 0) {
-                        String attemptsMsg = config.msg("login.attempts-left")
-                                .replace("%attempts%", String.valueOf(remaining));
-                        safeShowDialog(player, loginFactory.build(player, config.parse(
-                                config.msg("login.wrong_password") + "<br>" + attemptsMsg)));
-                    } else {
-                        safeShowDialog(player, loginFactory.build(player, config.msgComponent("login.wrong_password")));
+                    if (ipBlocked) {
+                        player.kick(config.parse("<color:#FF6B6B>IP adresiniz geçici olarak engellendi.</color>"));
+                        return;
                     }
-                }
+
+                    if (passwordValid) {
+                        auth.forceLogin(player);
+                        player.removePotionEffect(PotionEffectType.BLINDNESS);
+                        safeCloseDialog(player);
+                        player.sendMessage(config.msgComponent("login.success"));
+
+                        if (lastInfo != null) {
+                            player.sendMessage(config.parse("<color:#3A4F6A>Son giriş: " + lastInfo + "</color>"));
+                        }
+
+                        EffectUtil.playEffect(plugin, player, "login-success");
+                        log(plugin, "login", player);
+                    } else {
+                        int attempts = auth.incrementAttempts(player);
+                        int maxAttempts = auth.getMaxAttempts();
+                        log(plugin, "failed-login", player);
+
+                        if (maxAttempts > 0 && attempts >= maxAttempts) {
+                            String msg = plugin.getConfig().getString("auth.max-attempts-kick-message",
+                                    "<red>Çok fazla yanlış deneme!</red>");
+                            log(plugin, "kick-attempts", player);
+                            player.kick(config.parse(msg));
+                            return;
+                        }
+
+                        EffectUtil.playEffect(plugin, player, "login-fail");
+
+                        int remaining = auth.getRemainingAttempts(player);
+                        if (remaining > 0) {
+                            String attemptsMsg = config.msg("login.attempts-left")
+                                    .replace("%attempts%", String.valueOf(remaining));
+                            safeShowDialog(player, loginFactory.build(player, config.parse(
+                                    config.msg("login.wrong_password") + "<br>" + attemptsMsg)));
+                        } else {
+                            safeShowDialog(player, loginFactory.build(player, config.msgComponent("login.wrong_password")));
+                        }
+                    }
+                });
             });
         };
     }
@@ -94,10 +104,16 @@ public final class DialogCallbacks {
             if (!(audience instanceof Player player)) return;
 
             String password = response.getText("password");
-            String confirmPassword = response.getText("confirm_password");
             String email = response.getText("email");
 
-            if (password == null || password.isEmpty() || confirmPassword == null || confirmPassword.isEmpty()) {
+            boolean requireConfirm = plugin.getConfig().getBoolean("auth.require-password-confirmation", true);
+            String confirmPassword = requireConfirm ? response.getText("confirm_password") : password;
+
+            if (password == null || password.isEmpty()) {
+                safeShowDialog(player, registerFactory.build(player, config.msgComponent("register.need_both")));
+                return;
+            }
+            if (requireConfirm && (confirmPassword == null || confirmPassword.isEmpty())) {
                 safeShowDialog(player, registerFactory.build(player, config.msgComponent("register.need_both")));
                 return;
             }
@@ -113,11 +129,24 @@ public final class DialogCallbacks {
                 return;
             }
 
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
+            // Async: PBKDF2 hash + DB write (CPU + I/O)
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
                 AuthService auth = kauth.getAuthService();
                 AuthService.RegisterResult result = auth.register(player, password, confirmPassword, email);
 
-                switch (result) {
+                // Main thread: UI ve Bukkit API
+                plugin.getServer().getScheduler().runTask(plugin, () -> handleRegisterResult(
+                        plugin, config, kauth, registerFactory, player, email, result));
+            });
+        };
+    }
+
+    private static void handleRegisterResult(Plugin plugin, ConfigManager config, KAuth kauth,
+                                               RegisterDialogFactory registerFactory, Player player,
+                                               String email, AuthService.RegisterResult result) {
+        if (!player.isOnline()) return;
+        AuthService auth = kauth.getAuthService();
+        switch (result) {
                     case SUCCESS -> {
                         player.removePotionEffect(PotionEffectType.BLINDNESS);
                         safeCloseDialog(player);
@@ -162,9 +191,7 @@ public final class DialogCallbacks {
                     case IP_LIMIT -> safeShowDialog(player, registerFactory.build(player, config.parse(
                             "<color:#FF6B6B>Bu IP adresinden maksimum hesap sayısına ulaşıldı!</color>")));
                     default -> safeShowDialog(player, registerFactory.build(player, config.msgComponent("register.failed")));
-                }
-            });
-        };
+        }
     }
 
     public static DialogActionCallback registerCancelCallback(ConfigManager config) {

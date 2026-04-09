@@ -1,27 +1,33 @@
 package com.kauth.auth;
 
+import com.kauth.KAuth;
 import com.kauth.common.messaging.AuthMessage;
 import com.kauth.common.messaging.MessageConstants;
 import com.kauth.common.storage.AuthDatabase;
 import com.kauth.common.storage.PasswordUtil;
+import com.kauth.config.Settings;
 import com.kauth.messaging.MessagingHelper;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 public class AuthService {
+
+    /** Tek allocation ile oturum bilgisini tutar (timestamp + IP). */
+    private record SessionEntry(long loginTime, String ip) {}
 
     private final Plugin plugin;
     private final AuthDatabase db;
     private final Set<UUID> authenticatedPlayers = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Integer> loginAttempts = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> sessionCache = new ConcurrentHashMap<>();
-    private final Map<UUID, String> sessionIpCache = new ConcurrentHashMap<>();
+    private final Map<UUID, SessionEntry> sessions = new ConcurrentHashMap<>();
     private final Map<String, Integer> ipAttempts = new ConcurrentHashMap<>();
     private final Map<String, Long> ipBlockedUntil = new ConcurrentHashMap<>();
     private final Map<String, Integer> ipRegisterCount = new ConcurrentHashMap<>();
+    private final List<Consumer<Player>> authSuccessHandlers = new ArrayList<>();
 
     public AuthService(Plugin plugin, AuthDatabase db) {
         this.plugin = plugin;
@@ -45,24 +51,51 @@ public class AuthService {
     }
 
     public void setAuthenticated(Player player, boolean authenticated) {
+        UUID uuid = player.getUniqueId();
         if (authenticated) {
-            authenticatedPlayers.add(player.getUniqueId());
-            loginAttempts.remove(player.getUniqueId());
+            authenticatedPlayers.add(uuid);
+            loginAttempts.remove(uuid);
             String ip = getIp(player);
             ipAttempts.remove(ip);
             db.updateLastLogin(player.getName(), ip);
-            int sessionTimeout = plugin.getConfig().getInt("auth.session-timeout", 0);
+            int sessionTimeout = settings().sessionTimeoutMinutes;
             if (sessionTimeout > 0) {
-                sessionCache.put(player.getUniqueId(), System.currentTimeMillis());
-                sessionIpCache.put(player.getUniqueId(), ip);
+                sessions.put(uuid, new SessionEntry(System.currentTimeMillis(), ip));
             }
-            // Velocity sync
             sendSyncMessage(player, MessageConstants.LOGIN);
+            fireAuthSuccess(player);
         } else {
-            authenticatedPlayers.remove(player.getUniqueId());
+            authenticatedPlayers.remove(uuid);
+            // Manuel logout → session cache temizle ki reconnect'te auto-login olmasın
+            sessions.remove(uuid);
             db.setLoggedIn(player.getName(), false);
-            // Velocity sync
             sendSyncMessage(player, MessageConstants.LOGOUT);
+        }
+    }
+
+    private Settings settings() {
+        return ((KAuth) plugin).getConfigManager().getSettings();
+    }
+
+    /**
+     * Auth başarılı olduğunda çağrılacak handler kaydet.
+     * JoinListener countdown task'ını iptal etmek için kullanır.
+     */
+    public void registerAuthSuccessHandler(Consumer<Player> handler) {
+        authSuccessHandlers.add(handler);
+    }
+
+    private void fireAuthSuccess(Player player) {
+        // Her zaman main thread'de çalışsın
+        Runnable r = () -> {
+            for (Consumer<Player> h : authSuccessHandlers) {
+                try { h.accept(player); } catch (Exception ignored) {}
+            }
+        };
+        if (plugin.getServer().isPrimaryThread()) {
+            r.run();
+        } else {
+            plugin.getServer().getScheduler().runTask(plugin, r);
         }
     }
 
@@ -72,43 +105,63 @@ public class AuthService {
     public void forceLoginRemote(Player player) {
         authenticatedPlayers.add(player.getUniqueId());
         loginAttempts.remove(player.getUniqueId());
+        fireAuthSuccess(player);
     }
 
     public boolean hasValidSession(Player player) {
-        int sessionTimeout = plugin.getConfig().getInt("auth.session-timeout", 0);
+        int sessionTimeout = settings().sessionTimeoutMinutes;
         if (sessionTimeout <= 0) return false;
-        UUID uuid = player.getUniqueId();
-        if (!sessionCache.containsKey(uuid)) return false;
-        long lastLogin = sessionCache.get(uuid);
-        String lastIp = sessionIpCache.get(uuid);
-        String currentIp = getIp(player);
-        if (!currentIp.equals(lastIp)) return false;
-        long elapsed = System.currentTimeMillis() - lastLogin;
+        SessionEntry entry = sessions.get(player.getUniqueId());
+        if (entry == null) return false;
+        if (!getIp(player).equals(entry.ip())) return false;
+        long elapsed = System.currentTimeMillis() - entry.loginTime();
         return elapsed < (sessionTimeout * 60_000L);
     }
 
     public boolean isIpBlocked(Player player) {
-        String ip = getIp(player);
+        return isIpBlocked(getIp(player));
+    }
+
+    public boolean isIpBlocked(String ip) {
         Long blockedUntil = ipBlockedUntil.get(ip);
         if (blockedUntil != null && System.currentTimeMillis() < blockedUntil) return true;
-        int maxIpAttempts = plugin.getConfig().getInt("auth.max-ip-attempts", 20);
+        int maxIpAttempts = settings().maxIpAttempts;
         if (maxIpAttempts <= 0) return false;
         return ipAttempts.getOrDefault(ip, 0) >= maxIpAttempts;
+    }
+
+    /**
+     * IP ban'ın biteceği zaman (ms). Bloklu değilse 0 döner.
+     */
+    public long getIpBlockedUntil(String ip) {
+        Long until = ipBlockedUntil.get(ip);
+        return until == null ? 0 : until;
+    }
+
+    /**
+     * IP ban'ın kalan süresi (saniye). Bloklu değilse 0 döner.
+     */
+    public long getIpBlockRemainingSeconds(String ip) {
+        long until = getIpBlockedUntil(ip);
+        if (until == 0) return 0;
+        long remaining = (until - System.currentTimeMillis()) / 1000;
+        return Math.max(0, remaining);
     }
 
     public void incrementIpAttempts(Player player) {
         String ip = getIp(player);
         int current = ipAttempts.merge(ip, 1, Integer::sum);
-        int maxIpAttempts = plugin.getConfig().getInt("auth.max-ip-attempts", 20);
+        Settings s = settings();
+        int maxIpAttempts = s.maxIpAttempts;
         if (maxIpAttempts > 0 && current >= maxIpAttempts) {
-            int blockMinutes = plugin.getConfig().getInt("auth.ip-block-minutes", 10);
+            int blockMinutes = s.ipBlockMinutes;
             ipBlockedUntil.put(ip, System.currentTimeMillis() + blockMinutes * 60_000L);
             plugin.getLogger().warning("[Güvenlik] IP engellendi: " + ip + " (" + blockMinutes + " dakika)");
         }
     }
 
     public boolean canRegisterFromIp(Player player) {
-        int maxPerIp = plugin.getConfig().getInt("auth.max-accounts-per-ip", 3);
+        int maxPerIp = settings().maxAccountsPerIp;
         if (maxPerIp <= 0) return true;
         String ip = getIp(player);
         int count = db.getAccountCountByIp(ip);
@@ -118,6 +171,7 @@ public class AuthService {
     public void removePlayer(UUID uuid) {
         authenticatedPlayers.remove(uuid);
         loginAttempts.remove(uuid);
+        // NOT: sessions'ı silmiyoruz → quit sonrası valid session varsa reconnect'te auto-login
     }
 
     public boolean checkPassword(String playerName, String password) {
@@ -136,7 +190,7 @@ public class AuthService {
     }
 
     public int getMaxAttempts() {
-        return plugin.getConfig().getInt("auth.max-login-attempts", 5);
+        return settings().maxLoginAttempts;
     }
 
     public int getRemainingAttempts(Player player) {
@@ -152,12 +206,11 @@ public class AuthService {
 
     public RegisterResult register(Player player, String password, String confirmPassword, String email) {
         if (isRegistered(player.getName())) return RegisterResult.ALREADY_REGISTERED;
-        if (!password.equals(confirmPassword)) return RegisterResult.PASSWORD_MISMATCH;
+        Settings s = settings();
+        if (s.requirePasswordConfirmation && !password.equals(confirmPassword)) return RegisterResult.PASSWORD_MISMATCH;
 
-        int minLen = plugin.getConfig().getInt("auth.min-password-length", 4);
-        int maxLen = plugin.getConfig().getInt("auth.max-password-length", 30);
-        if (password.length() < minLen) return RegisterResult.PASSWORD_TOO_SHORT;
-        if (password.length() > maxLen) return RegisterResult.PASSWORD_TOO_LONG;
+        if (password.length() < s.minPasswordLength) return RegisterResult.PASSWORD_TOO_SHORT;
+        if (password.length() > s.maxPasswordLength) return RegisterResult.PASSWORD_TOO_LONG;
 
         if (isWeakPassword(password, player.getName())) return RegisterResult.PASSWORD_INVALID;
         if (!canRegisterFromIp(player)) return RegisterResult.IP_LIMIT;
@@ -180,8 +233,8 @@ public class AuthService {
 
         if (success) {
             // E-posta doğrulaması gerekiyorsa hemen authenticate etme
-            boolean emailVerificationRequired = plugin.getConfig().getBoolean("email.enabled", false)
-                    && plugin.getConfig().getBoolean("email.verification.required-on-register", true)
+            boolean emailVerificationRequired = s.emailEnabled
+                    && s.emailVerificationRequired
                     && email != null && !email.isEmpty();
 
             if (emailVerificationRequired) {
@@ -195,7 +248,7 @@ public class AuthService {
     }
 
     private boolean isWeakPassword(String password, String playerName) {
-        if (!plugin.getConfig().getBoolean("auth.block-weak-passwords", true)) return false;
+        if (!settings().blockWeakPasswords) return false;
         String lower = password.toLowerCase();
         if (lower.equals(playerName.toLowerCase())) return true;
         String[] weak = {"1234", "12345", "123456", "password", "sifre", "qwerty", "abcdef", "111111", "000000"};
@@ -221,11 +274,11 @@ public class AuthService {
     }
 
     public int getMinPasswordLength() {
-        return plugin.getConfig().getInt("auth.min-password-length", 4);
+        return settings().minPasswordLength;
     }
 
     public int getMaxPasswordLength() {
-        return plugin.getConfig().getInt("auth.max-password-length", 30);
+        return settings().maxPasswordLength;
     }
 
     public AuthDatabase getDb() {
@@ -237,7 +290,7 @@ public class AuthService {
     }
 
     private void sendSyncMessage(Player player, byte type) {
-        if (!plugin.getConfig().getBoolean("velocity.enabled", false)) return;
+        if (!settings().velocityEnabled) return;
         AuthMessage msg = new AuthMessage(type, player.getUniqueId().toString(), player.getName());
         player.sendPluginMessage(plugin, MessageConstants.CHANNEL, msg.toBytes());
     }
@@ -246,7 +299,7 @@ public class AuthService {
      * Admin işlemlerinde (kayıt silme, şifre değiştirme) force logout gönder.
      */
     public void sendForceLogout(Player target) {
-        if (!plugin.getConfig().getBoolean("velocity.enabled", false)) return;
+        if (!settings().velocityEnabled) return;
         AuthMessage msg = new AuthMessage(MessageConstants.FORCE_LOGOUT, target.getUniqueId().toString(), target.getName());
         target.sendPluginMessage(plugin, MessageConstants.CHANNEL, msg.toBytes());
     }

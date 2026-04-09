@@ -13,15 +13,22 @@ public class ConfigManager {
     private final KAuth plugin;
     private final MiniMessage mm = MiniMessage.miniMessage();
     private FileConfiguration cfg;
+    private final Settings settings;
 
     public ConfigManager(KAuth plugin) {
         this.plugin = plugin;
         this.cfg = plugin.getConfig();
+        this.settings = new Settings(plugin);
+    }
+
+    public Settings getSettings() {
+        return settings;
     }
 
     public void reload() {
         plugin.reloadConfig();
         this.cfg = plugin.getConfig();
+        this.settings.reload();
     }
 
     // Dialog

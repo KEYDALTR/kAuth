@@ -9,8 +9,6 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 
 public class LogoutCommand implements CommandExecutor {
 
@@ -41,14 +39,6 @@ public class LogoutCommand implements CommandExecutor {
         player.sendMessage(config.msgComponent("logout.success"));
         EffectUtil.playEffect(plugin, player, "logout");
 
-        if (plugin.getConfig().getBoolean("auth.blind-effect", true)) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, Integer.MAX_VALUE, 0, false, false, false));
-        }
-
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) dialogProvider.showLogin(player);
-        }, 5L);
-
         // Loglama
         if (plugin.getConfig().getBoolean("logging.enabled", true)) {
             String format = plugin.getConfig().getString("logging.logout", "");
@@ -56,6 +46,14 @@ public class LogoutCommand implements CommandExecutor {
                 plugin.getLogger().info(format.replace("%player%", player.getName()));
             }
         }
+
+        // Tam auth flow'u yeniden başlat (körlük, timeout, bossbar, title countdown, dialog)
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                plugin.getJoinListener().beginAuthFlow(player);
+            }
+        }, 5L);
+
         return true;
     }
 }

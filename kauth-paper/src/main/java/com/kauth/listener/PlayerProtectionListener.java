@@ -1,6 +1,7 @@
 package com.kauth.listener;
 
 import com.kauth.auth.AuthService;
+import com.kauth.config.Settings;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -13,93 +14,91 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.plugin.Plugin;
 
-import java.util.List;
-
+/**
+ * Giriş yapmamış oyuncuyu korumak için event listener.
+ *
+ * OPTIMIZE NOTLARI:
+ * - Hot-path config okumaları Settings cache'inden yapılır
+ * - Authenticated check en başta (en yaygın senaryo: zaten giriş yapmış)
+ * - ignoreCancelled=true → başka plugin cancel'lamışsa skip
+ * - PlayerMoveEvent'te hasChangedBlock() vanilla Paper shortcut'u
+ */
 public class PlayerProtectionListener implements Listener {
 
     private final AuthService auth;
-    private final Plugin plugin;
+    private final Settings settings;
 
-    public PlayerProtectionListener(Plugin plugin, AuthService auth) {
-        this.plugin = plugin;
+    public PlayerProtectionListener(Plugin plugin, AuthService auth, Settings settings) {
         this.auth = auth;
+        this.settings = settings;
     }
 
-    private boolean isNotAuthenticated(Player player) {
-        return !auth.isAuthenticated(player);
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onChat(AsyncPlayerChatEvent event) {
-        if (plugin.getConfig().getBoolean("auth.block-chat", true) && isNotAuthenticated(event.getPlayer())) {
+        if (!settings.blockChat) return;
+        if (!auth.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onCommand(PlayerCommandPreprocessEvent event) {
-        if (!plugin.getConfig().getBoolean("auth.block-commands", true)) return;
-        if (isNotAuthenticated(event.getPlayer())) {
-            String cmd = event.getMessage().toLowerCase();
-            List<String> allowed = plugin.getConfig().getStringList("auth.allowed-commands");
-            for (String allowedCmd : allowed) {
-                if (cmd.startsWith(allowedCmd.toLowerCase())) return;
-            }
+        if (!settings.blockCommands) return;
+        if (auth.isAuthenticated(event.getPlayer())) return;
+        if (!settings.isCommandAllowed(event.getMessage())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        if (!plugin.getConfig().getBoolean("auth.freeze-player", true)) return;
-        if (isNotAuthenticated(event.getPlayer())) {
-            if (event.getFrom().getBlockX() != event.getTo().getBlockX()
-                || event.getFrom().getBlockY() != event.getTo().getBlockY()
-                || event.getFrom().getBlockZ() != event.getTo().getBlockZ()) {
-                event.setTo(event.getFrom());
-            }
+        if (!settings.freezePlayer) return;
+        // Block-level change kontrolü - yaw/pitch için tetiklenmesin
+        if (!event.hasChangedBlock()) return;
+        if (!auth.isAuthenticated(event.getPlayer())) {
+            event.setTo(event.getFrom());
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInteract(PlayerInteractEvent event) {
-        if (isNotAuthenticated(event.getPlayer())) {
+        if (!auth.isAuthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
-        if (isNotAuthenticated(event.getPlayer())) event.setCancelled(true);
+        if (!auth.isAuthenticated(event.getPlayer())) event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        if (isNotAuthenticated(event.getPlayer())) event.setCancelled(true);
+        if (!auth.isAuthenticated(event.getPlayer())) event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Player player && isNotAuthenticated(player)) {
+        if (event.getEntity() instanceof Player player && !auth.isAuthenticated(player)) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onPickup(EntityPickupItemEvent event) {
-        if (event.getEntity() instanceof Player player && isNotAuthenticated(player)) {
+        if (event.getEntity() instanceof Player player && !auth.isAuthenticated(player)) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent event) {
-        if (isNotAuthenticated(event.getPlayer())) event.setCancelled(true);
+        if (!auth.isAuthenticated(event.getPlayer())) event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getWhoClicked() instanceof Player player && isNotAuthenticated(player)) {
+        if (event.getWhoClicked() instanceof Player player && !auth.isAuthenticated(player)) {
             event.setCancelled(true);
         }
     }

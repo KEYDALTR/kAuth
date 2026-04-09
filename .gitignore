@@ -26,5 +26,18 @@ integration-test.js
 package.json
 package-lock.json
 
+# Spark profiler
+spark-load.bin
+spark-raw.bin
+spark-raw.gz
+spark-sample.json
+spark-results.txt
+spark-load-bot.js
+spark-loop.sh
+analyze-spark.js
+spark.proto
+spark_sampler.proto
+spark/
+
 # Claude
 .claude/
